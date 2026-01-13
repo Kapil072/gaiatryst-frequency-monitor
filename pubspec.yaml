@@ -1,0 +1,32 @@
+name: earth_3d_viewer
+description: A new Flutter project.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_cube: ^0.1.1  # Make sure this is indented by 2 spaces
+  csv: ^6.0.0
+  path_provider: ^2.1.1
+  url_launcher: ^6.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/13902_Earth_v1_l3.obj
+    - assets/13902_Earth_v1_l3.mtl
+    - assets/Earth_diff.jpg
+    - assets/8k_earth_daymap.jpg
+    - assets/WhatsApp_Image_2025-12-28_at_5.00.39_PM-removebg-preview (1).png
+    - assets/why this app.png
+    - assets/More about Schumann Vibes .jpg
