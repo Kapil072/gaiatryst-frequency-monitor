@@ -1,0 +1,45 @@
+name: gaiatryst_synopsis
+description: A new Flutter project.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_cube: ^0.1.1  # Make sure this is indented by 2 spaces
+  csv: ^6.0.0
+  path_provider: ^2.1.1
+  url_launcher: ^6.2.2
+  http: ^1.1.0
+  html: ^0.15.4
+  process_run: ^0.13.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter:
+  uses-material-design: true
+
+  # Add assets here
+  assets:
+    - assets/dot.jpeg
+    - assets/13902_Earth_v1_l3.obj
+    - assets/13902_Earth_v1_l3.mtl
+    - assets/8k_earth_daymap.jpg
+    - assets/applogo.png
+    - assets/why this app.png
+    - assets/More about Schumann Vibes .jpg
+    - assets/gci_hourly_log_clean.csv
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  windows:
+    generate: true
+  image_path: "assets/applogo.png"

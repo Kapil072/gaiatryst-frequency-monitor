@@ -1,0 +1,1 @@
+Write-Host 'Starting Python data collection...'; Start-Process -FilePath 'python' -ArgumentList 'main.py' -WorkingDirectory 'e:\1.GAIATRYST SYNOPSIS\app\python' -WindowStyle Minimized; Start-Sleep -Seconds 3; Write-Host 'Starting Flutter app...'; Set-Location 'e:\1.GAIATRYST SYNOPSIS\app'; flutter run
