@@ -1,0 +1,43 @@
+# Flutter/Dart
+**/*.dart_tool/
+**/.packages
+**/.pub-cache/
+**/.pub/
+**/build/
+
+# Android
+*/android/**/gradle/
+*/android/**/gradlew
+*/android/**/gradlew.bat
+*/android/**/local.properties
+**/android/key.properties
+**/android/**/keystore.jks
+
+# iOS
+*/ios/**/.generated/
+*/ios/Pods/
+*/ios/.symlinks/
+*/ios/Flutter/App.framework/
+*/ios/Flutter/Flutter.framework/
+*/ios/Flutter/Flutter.podspec
+*/ios/Flutter/Generated.xcconfig
+*/ios/Flutter/app.flx
+*/ios/Flutter/app.zip
+*/ios/Flutter/flutter_assets/
+*/ios/Flutter/flutter_export_environment.sh
+*/ios/ServiceDefinitions.json
+*/ios/Runner/GeneratedPluginRegistrant.*
+
+# Server
+server/node_modules/
+server/.env
+
+# Python
+python/__pycache__/
+python/*.pyc
+*.log
+
+# Environment files
+.env
+.env.local
+.env.production

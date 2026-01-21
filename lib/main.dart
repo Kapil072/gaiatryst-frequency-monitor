@@ -227,15 +227,35 @@ class _EarthViewPageState extends State<EarthViewPage>
 
   Future<void> _fetchMobileData() async {
     try {
-      debugPrint('Fetching data for mobile platform...');
+      debugPrint('Fetching latest frequency data from GitHub...');
 
       final documentDir = await getApplicationDocumentsDirectory();
       final csvFile = File('${documentDir.path}/gci_hourly_log_clean.csv');
 
-      // Try to fetch from web API (replace with your actual server URL)
+      // Try to fetch directly from GitHub raw content
+      // TODO: Replace YOUR_USERNAME with your actual GitHub username
+      final githubRawUrl =
+          'https://raw.githubusercontent.com/Kapil072/gaiatryst-frequency-monitor/main/assets/gci_hourly_log_clean.csv';
+
       try {
-        // Example server URL - replace with your deployed server
-        // For now, using a placeholder - you'll need to deploy the server
+        final response = await http.get(Uri.parse(githubRawUrl));
+
+        if (response.statusCode == 200) {
+          // Save the fetched CSV data
+          await csvFile.writeAsString(response.body);
+          debugPrint('Frequency data updated from GitHub');
+          await _loadFrequencyData();
+          return;
+        } else {
+          debugPrint(
+              'Failed to fetch data from GitHub: ${response.statusCode}');
+        }
+      } catch (githubError) {
+        debugPrint('GitHub fetch failed: $githubError');
+      }
+
+      // If GitHub fails, try the web API as backup
+      try {
         final apiUrl =
             'http://10.0.2.2:3000/api/data'; // Server API endpoint for Android emulator
         // For iOS simulator, use: 'http://localhost:3000/api/data'
@@ -261,21 +281,21 @@ class _EarthViewPageState extends State<EarthViewPage>
         debugPrint('Web service fetch failed: $webError');
       }
 
-      // If web service fails, try to update from assets
+      // Final fallback - use local assets
       try {
         final assetData =
             await rootBundle.loadString('assets/gci_hourly_log_clean.csv');
         await csvFile.writeAsString(assetData);
-        debugPrint('Mobile data updated from assets (fallback)');
+        debugPrint('Using local assets data (fallback)');
+        await _loadFrequencyData();
       } catch (assetError) {
         debugPrint('Asset fallback also failed: $assetError');
       }
 
-      await _loadFrequencyData();
     } catch (e) {
-      debugPrint('Error fetching mobile data: $e');
-
-      // Final fallback - try to load from assets even in error case
+      debugPrint('Error in mobile data fetching: $e');
+      
+      // Ultimate fallback
       try {
         final documentDir = await getApplicationDocumentsDirectory();
         final csvFile = File('${documentDir.path}/gci_hourly_log_clean.csv');
@@ -284,7 +304,7 @@ class _EarthViewPageState extends State<EarthViewPage>
         await csvFile.writeAsString(assetData);
         await _loadFrequencyData();
       } catch (finalError) {
-        debugPrint('Final fallback failed: $finalError');
+        debugPrint('All fallbacks failed: $finalError');
       }
     }
   }
