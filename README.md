@@ -48,7 +48,14 @@ pip install selenium webdriver-manager
 
 ### Running the Application
 
-#### Option 1: Local Development
+#### Option 1: Automatic Server Launch (Desktop - Recommended)
+```bash
+# Windows: Double-click launch_app_with_server.bat
+# Or run in PowerShell: .\launch_app_with_server.ps1
+```
+This automatically starts the data server and Flutter app with live data.
+
+#### Option 2: Manual Server Control
 ```bash
 # Terminal 1: Start data server
 cd server
@@ -58,7 +65,7 @@ npm start
 flutter run
 ```
 
-#### Option 2: Mobile Deployment
+#### Option 3: Mobile Deployment
 Update server URL in `lib/main.dart` to your deployed server address.
 
 ## ⚙️ Automated Data Collection

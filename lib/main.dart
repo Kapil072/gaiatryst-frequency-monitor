@@ -181,12 +181,85 @@ class _EarthViewPageState extends State<EarthViewPage>
     // Load initial data first
     await _loadFrequencyData();
 
-    // On desktop platforms, try to update data by running Python script
+    // On desktop platforms, start server and update data
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      await _runPythonScript();
+      await _startServerAndGetData();
     } else {
       // On mobile platforms, fetch data from web service
       await _fetchMobileData();
+    }
+  }
+
+  Future<void> _startServerAndGetData() async {
+    try {
+      debugPrint('Starting data server and fetching live data...');
+      
+      // First, try to run the Python script directly for immediate data
+      await _runPythonScript();
+      
+      // Then start the server in background for continuous updates
+      await _startBackgroundServer();
+      
+    } catch (e) {
+      debugPrint('Error in server startup sequence: $e');
+      // Fallback to direct Python script execution
+      await _runPythonScript();
+    }
+  }
+
+  Future<void> _startBackgroundServer() async {
+    try {
+      debugPrint('Starting background server...');
+      
+      // Use Process.start to run server in background
+      final serverProcess = await Process.start(
+        'node',
+        ['server/server.js'],
+        workingDirectory: Directory.current.path,
+        mode: ProcessStartMode.detached,
+      );
+      
+      debugPrint('Server started with PID: ${serverProcess.pid}');
+      
+      // Give server time to initialize
+      await Future.delayed(const Duration(seconds: 3));
+      
+      // Try to fetch data from the newly started server
+      await _fetchFromLocalServer();
+      
+    } catch (e) {
+      debugPrint('Failed to start background server: $e');
+    }
+  }
+
+  Future<void> _fetchFromLocalServer() async {
+    try {
+      debugPrint('Fetching data from local server...');
+      
+      final documentDir = await getApplicationDocumentsDirectory();
+      final csvFile = File('${documentDir.path}/gci_hourly_log_clean.csv');
+      
+      // Try to fetch from local server
+      final localServerUrl = 'http://localhost:3000/api/data';
+      
+      final response = await http.get(Uri.parse(localServerUrl)).timeout(
+        const Duration(seconds: 10),
+      );
+      
+      if (response.statusCode == 200) {
+        final jsonData = json.decode(response.body);
+        if (jsonData['success'] && jsonData['data']) {
+          // Convert the received data to CSV format
+          final csvContent = _convertJsonToCsv(jsonData['data']);
+          await csvFile.writeAsString(csvContent);
+          debugPrint('Live data fetched from local server');
+          await _loadFrequencyData();
+        }
+      } else {
+        debugPrint('Local server returned status: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Failed to fetch from local server: $e');
     }
   }
 
@@ -291,10 +364,9 @@ class _EarthViewPageState extends State<EarthViewPage>
       } catch (assetError) {
         debugPrint('Asset fallback also failed: $assetError');
       }
-
     } catch (e) {
       debugPrint('Error in mobile data fetching: $e');
-      
+
       // Ultimate fallback
       try {
         final documentDir = await getApplicationDocumentsDirectory();
