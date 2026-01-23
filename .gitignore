@@ -1,45 +1,92 @@
-# Miscellaneous
-*.class
-*.log
-*.pyc
-*.swp
-.DS_Store
-.atom/
-.build/
-.buildlog/
-.history
-.svn/
-.swiftpm/
-migrate_working_dir/
-
-# IntelliJ related
-*.iml
-*.ipr
-*.iws
-.idea/
-
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
+# Flutter/Dart
+*.exe
+*.deb
+*.app
+build/
 .dart_tool/
-.flutter-plugins-dependencies
+.packages
 .pub-cache/
 .pub/
-/build/
-/coverage/
+*.mode1v3
+*.mode2v3
+*.moved-aside
+*.pbxuser
+*.perspectivev3
+**/*sync/
+*.tmproj
+.vscode/
+.idea/
 
-# Symbolication related
-app.*.symbols
+# Android
+/android/key.properties
+/android/**/gradle.properties
+/android/.gradle
+/android/captures/
+/android/gradlew
+/android/gradlew.bat
+/android/local.properties
+/android/**/ShrunkApkManifest.xml
+/android/**/output.json
+/android/**/mapping.txt
+/android/**/R.txt
+/android/**/generated/
+/android/.idea/
 
-# Obfuscation related
-app.*.map.json
+# iOS
+/ios/.symlinks/
+/ios/Flutter/.last_build_id
+/ios/Flutter/App.framework/
+/ios/Flutter/Flutter.framework/
+/ios/Flutter/Flutter.podspec
+/ios/Flutter/Generated.xcconfig
+/ios/Flutter/app.flx
+/ios/Flutter/app.zip
+/ios/Flutter/flutter_assets/
+/ios/Flutter/flutter_export_environment.sh
+/ios/Pods/
+/ios/Runner.xcworkspace/contents.xcworkspacedata
+/ios/Runner.xcodeproj/project.xcworkspace/xcshareddata/
+/ios/Runner.xcodeproj/xcuserdata/
+/ios/Runner/GeneratedPluginRegistrant.*
 
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
+# macOS
+/macos/Flutter/ephemeral/
+/macos/Pods/
+
+# Web
+/web/icons/
+
+# Windows
+/windows/runner/Release/
+/windows/runner/Debug/
+
+# Linux
+/linux/flutter/ephemeral/
+/linux/x64/
+/linux/arm64/
+
+# Python
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+.env
+
+# Data files
+*.csv
+*.log
+
+# VS Code
+.vscode/
+
+# Backup files
+*.backup
+*.bak
+
+# System files
+.DS_Store
+Thumbs.db
