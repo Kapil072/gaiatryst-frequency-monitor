@@ -9,6 +9,13 @@ import 'package:csv/csv.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 
+// ============================================================================
+// API CONFIGURATION - Change this URL after deploying to cloud
+// ============================================================================
+// For local development: 'http://localhost:5002/api/data'
+// For cloud (Render.com): 'https://your-app-name.onrender.com/api/data'
+const String API_URL = 'http://localhost:5002/api/data';
+
 void main() {
   runApp(const MyApp());
 }
@@ -327,11 +334,12 @@ Future<bool> _fetchDirectWebData() async {
 
   Future<void> _loadFrequencyData() async {
     try {
-      // Try API first (works for all platforms)
+      // Try Cloud/Local API first (works for all platforms)
       try {
+        debugPrint('Fetching data from: $API_URL');
         final response = await http.get(
-          Uri.parse('http://localhost:5002/api/data')
-        ).timeout(const Duration(seconds: 5));
+          Uri.parse(API_URL)
+        ).timeout(const Duration(seconds: 10));
         
         if (response.statusCode == 200) {
           final data = json.decode(response.body);
