@@ -190,7 +190,22 @@ class _EarthViewPageState extends State<EarthViewPage>
       
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        final newAvg = (data['global_avg'] as num).toDouble();
+        
+        // Check if data is live (not offline/failed fetch)
+        final bool isLive = data['is_live'] == true;
+        final globalAvg = data['global_avg'];
+        
+        // If data is not live or global_avg is null, show OFFLINE
+        if (!isLive || globalAvg == null) {
+          debugPrint('⚠️ Data not available - showing OFFLINE');
+          setState(() {
+            _averageFrequency = null;  // This will show OFFLINE
+            _countryFrequencies = {};
+          });
+          return;
+        }
+        
+        final newAvg = (globalAvg as num).toDouble();
         final stationsMap = data['stations'] as Map<String, dynamic>;
         
         final Map<String, double> newCountryFreqs = {};
@@ -211,10 +226,15 @@ class _EarthViewPageState extends State<EarthViewPage>
         debugPrint('✅ Data loaded: $newAvg Hz from ${newCountryFreqs.length} stations');
       } else {
         debugPrint('⚠️ Failed to load data: ${response.statusCode}');
+        setState(() {
+          _averageFrequency = null;  // Show OFFLINE on HTTP error
+        });
       }
     } catch (e) {
       debugPrint('❌ Error loading frequency data: $e');
-      // Keep existing data if fetch fails (shows OFFLINE if no data)
+      setState(() {
+        _averageFrequency = null;  // Show OFFLINE on error
+      });
     }
   }
 

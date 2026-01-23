@@ -7,6 +7,9 @@ on:
     - cron: '0 18 * * *'
   workflow_dispatch:  # Allows manual trigger from GitHub UI
 
+permissions:
+  contents: write
+
 jobs:
   fetch-data:
     runs-on: ubuntu-latest
@@ -98,21 +101,15 @@ jobs:
 
           # Fetch data
           data = fetch_heartmath_data()
+          is_live = data is not None
 
-          # Use fallback if fetch fails
+          # Use fallback if fetch fails - mark as not live
           if not data:
-              print("Using fallback data...")
+              print("Scraping failed - data will show as OFFLINE in app")
               data = {
-                  "global_avg": 7.81,
-                  "stations": {
-                      "GCI001": 7.85,
-                      "GCI002": 7.78,
-                      "GCI003": 7.82,
-                      "GCI004": 7.80,
-                      "GCI005": 7.79,
-                      "GCI006": 7.84
-                  },
-                  "active_stations": 6
+                  "global_avg": None,
+                  "stations": {},
+                  "active_stations": 0
               }
 
           # Add metadata
@@ -120,12 +117,16 @@ jobs:
           data["timestamp"] = now.strftime('%Y-%m-%d %H:%M:%S UTC')
           data["last_update"] = now.strftime('%Y-%m-%d %H:%M:%S UTC')
           data["source"] = "HeartMath GCI"
+          data["is_live"] = is_live
 
           # Save to file
           with open('data.json', 'w') as f:
               json.dump(data, f, indent=2)
 
-          print(f"Data saved: {data['global_avg']} Hz from {data['active_stations']} stations")
+          if is_live:
+              print(f"Data saved: {data['global_avg']} Hz from {data['active_stations']} stations")
+          else:
+              print("No live data available - app will show OFFLINE")
           EOF
           
       - name: Commit and push changes
