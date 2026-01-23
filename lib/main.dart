@@ -1,20 +1,17 @@
 import 'dart:math' as math;
-import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_cube/flutter_cube.dart';
-import 'package:csv/csv.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 
 // ============================================================================
-// API CONFIGURATION - Change this URL after deploying to cloud
+// DATA URL - GitHub Raw URL (automatically updated twice daily)
 // ============================================================================
-// For local development: 'http://localhost:5002/api/data'
-// For cloud (Render.com): 'https://your-app-name.onrender.com/api/data'
-const String API_URL = 'http://localhost:5002/api/data';
+// IMPORTANT: Replace YOUR_USERNAME and YOUR_REPO with your actual GitHub details
+const String DATA_URL = 'https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/data.json';
 
 void main() {
   runApp(const MyApp());
@@ -85,7 +82,6 @@ class _EarthViewPageState extends State<EarthViewPage>
   @override
   void initState() {
     super.initState();
-    _startPythonScraper();
 
     double time = 0;
     _rotationTimer = Timer.periodic(const Duration(milliseconds: 30), (timer) {
@@ -117,14 +113,8 @@ class _EarthViewPageState extends State<EarthViewPage>
             );
 
         for (var dot in _locationDots) {
-          // --- FIX APPLIED HERE ---
-          // Instead of setting the transform matrix directly, we update the scale property.
-          // This ensures that when updateTransform() is called, it uses the new size.
           dot.scale.setValues(pulseSize, pulseSize, pulseSize);
-
-          // Update color/material for pulsing effect
           _updateDotMaterial(dot, blinkColor);
-
           dot.updateTransform();
         }
 
@@ -143,56 +133,10 @@ class _EarthViewPageState extends State<EarthViewPage>
     });
 
     _loadFrequencyData();
-    _refreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+    // Refresh data every 5 minutes (data updates twice daily on server)
+    _refreshTimer = Timer.periodic(const Duration(minutes: 5), (_) {
       _loadFrequencyData();
     });
-  }
-
-  void _startPythonScraper() async {
-    // Only run on desktop platforms (macOS, Windows, Linux)
-    if (!Platform.isMacOS && !Platform.isWindows && !Platform.isLinux) return;
-
-    try {
-      // Find Python executable
-      String pythonCmd = 'python3';
-      try {
-        final result = await Process.run('python3', ['--version']);
-        if (result.exitCode != 0) pythonCmd = 'python';
-      } catch (_) {
-        pythonCmd = 'python';
-      }
-
-      // Possible paths to scraper
-      final possiblePaths = [
-        'python/main.py',
-        '${Directory.current.path}/python/main.py',
-        '../python/main.py',
-      ];
-
-      File? scriptFile;
-      for (final path in possiblePaths) {
-        final file = File(path);
-        if (await file.exists()) {
-          scriptFile = file;
-          break;
-        }
-      }
-
-      if (scriptFile != null) {
-        debugPrint('🚀 Starting Python scraper automatically from: ${scriptFile.path}');
-        // Start in detached mode so it persists and doesn't block the app.
-        await Process.start(
-          pythonCmd,
-          [scriptFile.path],
-          mode: ProcessStartMode.detached,
-          workingDirectory: scriptFile.parent.parent.path, // Set to project root
-        );
-      } else {
-        debugPrint('⚠️ Python scraper not found. Checked: $possiblePaths');
-      }
-    } catch (e) {
-      debugPrint('❌ Error starting Python scraper: $e');
-    }
   }
 
   // --- AGGRESSIVE MATERIAL OVERRIDE HELPER ---
@@ -236,215 +180,41 @@ class _EarthViewPageState extends State<EarthViewPage>
     }
   }
 
-Future<bool> _fetchDirectWebData() async {
-  try {
-    debugPrint("Attempting to fetch data directly from HeartMath...");
-    
-    // Fetch the HeartMath page
-    final response = await http.get(
-      Uri.parse("https://nocc.heartmath.org/power_levels/public/charts/power_levels.html"),
-    ).timeout(const Duration(seconds: 15));
-    
-    if (response.statusCode == 200) {
-      final htmlContent = response.body;
-      
-      // Look for the rawData variable in the JavaScript
-      final RegExp regexp = RegExp(r"rawData\s*=\s*(\[.*?\]);", multiLine: true, dotAll: true);
-      final Match? match = regexp.firstMatch(htmlContent);
-      
-      if (match != null) {
-        String jsonData = match.group(1)!;
-        
-        // Clean the JavaScript-style data to make it valid JSON
-        jsonData = jsonData.replaceAll(RegExp(r"/\*.*?\*/"), ""); // Remove comments
-        jsonData = jsonData.replaceAll(RegExp(r"//.*"), ""); // Remove line comments
-        jsonData = jsonData.replaceAllMapped(RegExp(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\s*:"), (match) {
-          return '"${match.group(1)}":';
-        }); // Quote unquoted keys
-        jsonData = jsonData.replaceAll(RegExp(r",\s*}"), "}"); // Remove trailing commas
-        jsonData = jsonData.replaceAll(RegExp(r",\s*]"), "]");
-        
-        final List<dynamic> rawData = json.decode(jsonData);
-        
-        // Process the data
-        final Map<String, double> newCountryFreqs = {};
-        double totalValue = 0;
-        int activeCount = 0;
-        
-        for (final series in rawData) {
-          final Map<String, dynamic> seriesMap = series as Map<String, dynamic>;
-          final String name = seriesMap["name"].toString().toLowerCase().trim();
-          final List<dynamic> dataPointsRaw = List.from(seriesMap["data"] ?? []);
-          
-          if (dataPointsRaw.isNotEmpty) {
-            // Convert the nested lists properly
-            final List<List<num>> dataPoints = [];
-            for (final point in dataPointsRaw) {
-              if (point is List) {
-                dataPoints.add(List<num>.from(point));
-              }
-            }
-            
-            if (dataPoints.isNotEmpty) {
-              final double lastValue = dataPoints.last.last.toDouble();
-              
-              // Map the names to our station IDs
-              String? stationId;
-              if (name.contains("california") || name.contains("usa")) {
-                stationId = "GCI001";
-              } else if (name.contains("hofuf") || name.contains("saudi")) {
-                stationId = "GCI002";
-              } else if (name.contains("lithuania")) {
-                stationId = "GCI003";
-              } else if (name.contains("canada")) {
-                stationId = "GCI004";
-              } else if (name.contains("new zealand")) {
-                stationId = "GCI005";
-              } else if (name.contains("south africa")) {
-                stationId = "GCI006";
-              }
-              
-              if (stationId != null && lastValue > 0) {
-                newCountryFreqs[stationId] = lastValue;
-                totalValue += lastValue;
-                activeCount++;
-              }
-            }
-          }
-        }
-        
-        if (newCountryFreqs.isNotEmpty) {
-          final double globalAvg = activeCount > 0 ? totalValue / activeCount : 0.0;
-          
-          setState(() {
-            _averageFrequency = globalAvg;
-            _countryFrequencies = newCountryFreqs;
-          });
-          
-          debugPrint("✅ Successfully loaded live data: ${globalAvg.toStringAsFixed(2)} Hz from ${newCountryFreqs.length} stations");
-          return true; // Indicate success
-        }
-      }
-    }
-  } catch (webError) {
-    debugPrint("⚠️ Web scraping failed: $webError");
-  }
-  return false; // Indicate failure
-}
-
+  /// Loads frequency data from the GitHub raw JSON file
   Future<void> _loadFrequencyData() async {
     try {
-      // Try Cloud/Local API first (works for all platforms)
-      try {
-        debugPrint('Fetching data from: $API_URL');
-        final response = await http.get(
-          Uri.parse(API_URL)
-        ).timeout(const Duration(seconds: 10));
+      debugPrint('Fetching data from: $DATA_URL');
+      final response = await http.get(
+        Uri.parse(DATA_URL)
+      ).timeout(const Duration(seconds: 15));
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final newAvg = (data['global_avg'] as num).toDouble();
+        final stationsMap = data['stations'] as Map<String, dynamic>;
         
-        if (response.statusCode == 200) {
-          final data = json.decode(response.body);
-          final newAvg = (data['global_avg'] as num).toDouble();
-          final stationsMap = data['stations'] as Map<String, dynamic>;
-          
-          final Map<String, double> newCountryFreqs = {};
-          for (final station in _countryNames.keys) {
-            final value = stationsMap[station];
-            if (value != null) {
-              final freq = (value is num) ? value.toDouble() : double.tryParse(value.toString());
-              if (freq != null && freq > 0) {
-                newCountryFreqs[station] = freq;
-              }
+        final Map<String, double> newCountryFreqs = {};
+        for (final station in _countryNames.keys) {
+          final value = stationsMap[station];
+          if (value != null) {
+            final freq = (value is num) ? value.toDouble() : double.tryParse(value.toString());
+            if (freq != null && freq > 0) {
+              newCountryFreqs[station] = freq;
             }
           }
-          
-          setState(() {
-            _averageFrequency = newAvg;
-            _countryFrequencies = newCountryFreqs;
-          });
-          debugPrint('✅ Data loaded from API: $newAvg Hz');
-          return;
         }
-      } catch (apiError) {
-        debugPrint('⚠️ API not available, falling back to CSV: $apiError');
-      }
-
-      // Fallback to CSV (for desktop when API is not running)
-      final possiblePaths = [
-        'gci_hourly_log_clean.csv',
-        'python/gci_hourly_log_clean.csv',
-        '../gci_hourly_log_clean.csv',
-        '${Directory.current.path}/gci_hourly_log_clean.csv',
-        '${Directory.current.path}/python/gci_hourly_log_clean.csv',
-      ];
-
-      File? csvFile;
-      for (final path in possiblePaths) {
-        final file = File(path);
-        if (await file.exists()) {
-          csvFile = file;
-          break;
-        }
-      }
-
-      if (csvFile == null) return;
-
-      final csvContent = await csvFile.readAsString();
-      final rows = const CsvToListConverter().convert(csvContent);
-
-      if (rows.length < 2) return;
-
-      final headerRow = rows[0].map((e) => e.toString().trim()).toList();
-      final avgPowerIndex = headerRow.indexOf('Global Avg Power');
-
-      if (avgPowerIndex == -1) return;
-
-      // Find the last non-empty row that has data
-      var lastRowIndex = rows.length - 1;
-      while (lastRowIndex >= 1) {
-        final row = rows[lastRowIndex];
-        if (row.isNotEmpty && row.any((cell) => cell != null && cell.toString().trim().isNotEmpty)) {
-          break;
-        }
-        lastRowIndex--;
-      }
-      
-      if (lastRowIndex < 1) return;
-      final lastRow = rows[lastRowIndex];
-      final avgPower = lastRow[avgPowerIndex];
-
-      final newFrequency = (avgPower is num)
-          ? avgPower.toDouble()
-          : double.tryParse(avgPower.toString());
-
-      final Map<String, double> newCountryFreqs = {};
-      for (final station in _countryNames.keys) {
-        final stationIndex = headerRow.indexOf(station);
-        if (stationIndex != -1 && stationIndex < lastRow.length) {
-          final value = lastRow[stationIndex];
-          final freq = (value is num)
-              ? value.toDouble()
-              : double.tryParse(value.toString());
-          if (freq != null && freq > 0) {
-            newCountryFreqs[station] = freq;
-          }
-        }
-      }
-
-      if (newCountryFreqs.isNotEmpty) {
-        final sum = newCountryFreqs.values.reduce((a, b) => a + b);
-        final calculatedAvg = sum / newCountryFreqs.length;
+        
         setState(() {
-          _averageFrequency = calculatedAvg;
+          _averageFrequency = newAvg;
           _countryFrequencies = newCountryFreqs;
         });
-      } else if (newFrequency != null) {
-        setState(() {
-          _averageFrequency = newFrequency;
-          _countryFrequencies = newCountryFreqs;
-        });
+        debugPrint('✅ Data loaded: $newAvg Hz from ${newCountryFreqs.length} stations');
+      } else {
+        debugPrint('⚠️ Failed to load data: ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('Error loading frequency data: $e');
+      debugPrint('❌ Error loading frequency data: $e');
+      // Keep existing data if fetch fails (shows OFFLINE if no data)
     }
   }
 

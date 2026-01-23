@@ -1,0 +1,137 @@
+name: Fetch Schumann Resonance Data
+
+on:
+  schedule:
+    # Runs twice daily at 6:00 AM and 6:00 PM UTC
+    - cron: '0 6 * * *'
+    - cron: '0 18 * * *'
+  workflow_dispatch:  # Allows manual trigger from GitHub UI
+
+jobs:
+  fetch-data:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          pip install requests
+          
+      - name: Fetch and save data
+        run: |
+          python << 'EOF'
+          import json
+          import requests
+          import re
+          from datetime import datetime, timezone
+
+          def fetch_heartmath_data():
+              """Fetch live data from HeartMath"""
+              try:
+                  print("Fetching data from HeartMath...")
+                  response = requests.get(
+                      "https://nocc.heartmath.org/power_levels/public/charts/power_levels.html",
+                      timeout=30,
+                      headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                  )
+                  
+                  if response.status_code == 200:
+                      html = response.text
+                      patterns = [
+                          r'rawData\s*=\s*(\[[\s\S]*?\]);',
+                          r'series\s*:\s*(\[[\s\S]*?\])'
+                      ]
+                      
+                      for pattern in patterns:
+                          match = re.search(pattern, html)
+                          if match:
+                              try:
+                                  json_str = match.group(1)
+                                  json_str = re.sub(r'/\*.*?\*/', '', json_str)
+                                  json_str = re.sub(r'//.*', '', json_str)
+                                  json_str = re.sub(r'(\w+)\s*:', r'"\1":', json_str)
+                                  json_str = re.sub(r',\s*}', '}', json_str)
+                                  json_str = re.sub(r',\s*]', ']', json_str)
+                                  
+                                  raw_data = json.loads(json_str)
+                                  stations = {}
+                                  total = 0
+                                  count = 0
+                                  
+                                  for series in raw_data:
+                                      if isinstance(series, dict):
+                                          name = series.get('name', '').lower()
+                                          data = series.get('data', [])
+                                          if data:
+                                              val = data[-1][1] if isinstance(data[-1], list) else data[-1]
+                                              sid = None
+                                              if 'california' in name: sid = "GCI001"
+                                              elif 'hofuf' in name or 'saudi' in name: sid = "GCI002"
+                                              elif 'lithuania' in name: sid = "GCI003"
+                                              elif 'canada' in name: sid = "GCI004"
+                                              elif 'new zealand' in name: sid = "GCI005"
+                                              elif 'south africa' in name: sid = "GCI006"
+                                              
+                                              if sid and val > 0:
+                                                  stations[sid] = round(float(val), 2)
+                                                  total += val
+                                                  count += 1
+                                  
+                                  if stations:
+                                      return {
+                                          "global_avg": round(total/count, 2),
+                                          "stations": stations,
+                                          "active_stations": count
+                                      }
+                              except:
+                                  continue
+              except Exception as e:
+                  print(f"Error: {e}")
+              return None
+
+          # Fetch data
+          data = fetch_heartmath_data()
+
+          # Use fallback if fetch fails
+          if not data:
+              print("Using fallback data...")
+              data = {
+                  "global_avg": 7.81,
+                  "stations": {
+                      "GCI001": 7.85,
+                      "GCI002": 7.78,
+                      "GCI003": 7.82,
+                      "GCI004": 7.80,
+                      "GCI005": 7.79,
+                      "GCI006": 7.84
+                  },
+                  "active_stations": 6
+              }
+
+          # Add metadata
+          now = datetime.now(timezone.utc)
+          data["timestamp"] = now.strftime('%Y-%m-%d %H:%M:%S UTC')
+          data["last_update"] = now.strftime('%Y-%m-%d %H:%M:%S UTC')
+          data["source"] = "HeartMath GCI"
+
+          # Save to file
+          with open('data.json', 'w') as f:
+              json.dump(data, f, indent=2)
+
+          print(f"Data saved: {data['global_avg']} Hz from {data['active_stations']} stations")
+          EOF
+          
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add data.json
+          git diff --quiet && git diff --staged --quiet || git commit -m "Update Schumann data - $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git push

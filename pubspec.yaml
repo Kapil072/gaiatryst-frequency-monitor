@@ -9,8 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_cube: ^0.1.1  # Make sure this is indented by 2 spaces
-  csv: ^6.0.0
+  flutter_cube: ^0.1.1
   path_provider: ^2.1.1
   url_launcher: ^6.2.2
   http: ^1.1.0
