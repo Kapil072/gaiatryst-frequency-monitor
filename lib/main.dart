@@ -11,7 +11,7 @@ import 'package:http/http.dart' as http;
 // DATA URL - GitHub Raw URL (automatically updated twice daily)
 // ============================================================================
 // IMPORTANT: Replace YOUR_USERNAME and YOUR_REPO with your actual GitHub details
-const String DATA_URL = 'https://raw.githubusercontent.com/Dhruv25lodha/gaiatryst/main/data.json';
+const String DATA_URL = 'https://raw.githubusercontent.com/Kapil072/gaiatryst-frequency-monitor/main/data.json';
 
 void main() {
   runApp(const MyApp());

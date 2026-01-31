@@ -11,5 +11,6 @@
   "active_stations": 6,
   "timestamp": "2026-01-23 12:00:00 UTC",
   "last_update": "2026-01-23 12:00:00 UTC",
-  "source": "HeartMath GCI"
+  "source": "HeartMath GCI",
+  "is_live": true
 }
