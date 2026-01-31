@@ -1,16 +1,16 @@
 {
-  "global_avg": 7.83,
+  "global_avg": 7.82,
   "stations": {
-    "GCI001": 7.78,
-    "GCI002": 7.84,
-    "GCI003": 7.8,
-    "GCI004": 7.82,
-    "GCI005": 7.91,
-    "GCI006": 100
+    "GCI001": 7.76,
+    "GCI002": 7.93,
+    "GCI003": 7.88,
+    "GCI004": 7.78,
+    "GCI005": 7.8,
+    "GCI006": 7.8
   },
   "active_stations": 6,
-  "timestamp": "2026-01-31 13:08:42 UTC",
-  "last_update": "2026-01-31 13:08:42 UTC",
+  "timestamp": "2026-01-31 13:15:27 UTC",
+  "last_update": "2026-01-31 13:15:27 UTC",
   "source": "HeartMath GCI",
   "is_live": true
 }
