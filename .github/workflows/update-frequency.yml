@@ -2,9 +2,8 @@ name: Hourly Frequency Update
 
 on:
   schedule:
-    # Runs every hour at minute 0
-    - cron: '0 * * * *'
-  workflow_dispatch:  # Allows manual trigger from GitHub UI
+    - cron: '0 * * * *'  # Runs at minute 0 of every hour
+  workflow_dispatch:      # Allows manual trigger
 
 permissions:
   contents: write
@@ -12,197 +11,143 @@ permissions:
 jobs:
   fetch-data:
     runs-on: ubuntu-latest
-    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          
+
       - name: Install dependencies
         run: |
-          pip install requests beautifulsoup4
-          
+          pip install selenium webdriver-manager
+
       - name: Fetch and save data
         run: |
           python << 'EOF'
           import json
-          import requests
-          import re
-          import random
-          from datetime import datetime, timezone
-          from bs4 import BeautifulSoup
+          import time
+          import datetime
+          import sys
+          from selenium import webdriver
+          from selenium.webdriver.chrome.service import Service
+          from selenium.webdriver.chrome.options import Options
+          from webdriver_manager.chrome import ChromeDriverManager
 
-          def fetch_heartmath_data():
-              """Fetch live data from HeartMath with multiple fallback methods"""
+          # --- CONFIG ---
+          TARGET_URL = "https://nocc.heartmath.org/power_levels/public/charts/power_levels.html"
+          ALL_GCI_STATIONS = ["GCI001", "GCI002", "GCI003", "GCI004", "GCI005", "GCI006"]
+          OUTPUT_FILE = "data.json"
+
+          def get_selenium_data():
+              print("Launch headless browser...")
+              
+              chrome_options = Options()
+              chrome_options.add_argument("--headless")
+              chrome_options.add_argument("--no-sandbox")
+              chrome_options.add_argument("--disable-dev-shm-usage")
+              
+              # Auto-install correct driver
+              service = Service(ChromeDriverManager().install())
+              driver = webdriver.Chrome(service=service, options=chrome_options)
+              
               try:
-                  print("Fetching data from HeartMath...")
-                  response = requests.get(
-                      "https://nocc.heartmath.org/power_levels/public/charts/power_levels.html",
-                      timeout=30,
-                      headers={
-                          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                          'Accept-Language': 'en-US,en;q=0.5'
-                      }
-                  )
+                  driver.get(TARGET_URL)
+                  # Critical: Wait for Highcharts animation/loading
+                  time.sleep(15) 
                   
-                  if response.status_code == 200:
-                      html = response.text
-                      
-                      # Try multiple patterns to extract data
-                      patterns = [
-                          r'rawData\s*=\s*(\[[\s\S]*?\]);',
-                          r'series\s*:\s*(\[[\s\S]*?\])',
-                          r'"data"\s*:\s*(\[[\s\S]*?\])',
-                          r'Highcharts\.chart\([^,]+,\s*({[\s\S]*?})\)',
-                      ]
-                      
-                      for pattern in patterns:
-                          matches = re.findall(pattern, html)
-                          for match in matches:
-                              try:
-                                  json_str = match
-                                  # Clean JavaScript to valid JSON
-                                  json_str = re.sub(r'/\*.*?\*/', '', json_str)
-                                  json_str = re.sub(r'//.*', '', json_str)
-                                  json_str = re.sub(r"(\w+)\s*:", r'"\1":', json_str)
-                                  json_str = re.sub(r',\s*}', '}', json_str)
-                                  json_str = re.sub(r',\s*]', ']', json_str)
-                                  
-                                  raw_data = json.loads(json_str)
-                                  
-                                  # Handle if raw_data is a dict with series key
-                                  if isinstance(raw_data, dict) and 'series' in raw_data:
-                                      raw_data = raw_data['series']
-                                  
-                                  if not isinstance(raw_data, list):
-                                      continue
-                                      
-                                  stations = {}
-                                  total = 0
-                                  count = 0
-                                  
-                                  for series in raw_data:
-                                      if isinstance(series, dict):
-                                          name = series.get('name', '').lower().strip()
-                                          data = series.get('data', [])
-                                          if data and len(data) > 0:
-                                              last_point = data[-1]
-                                              val = last_point[1] if isinstance(last_point, list) and len(last_point) > 1 else last_point
-                                              
-                                              if not isinstance(val, (int, float)) or val <= 0:
-                                                  continue
-                                                  
-                                              sid = None
-                                              if 'california' in name or 'usa' in name or 'gci001' in name:
-                                                  sid = "GCI001"
-                                              elif 'hofuf' in name or 'saudi' in name or 'gci002' in name:
-                                                  sid = "GCI002"
-                                              elif 'lithuania' in name or 'gci003' in name:
-                                                  sid = "GCI003"
-                                              elif 'canada' in name or 'alberta' in name or 'gci004' in name:
-                                                  sid = "GCI004"
-                                              elif 'new zealand' in name or 'northland' in name or 'gci005' in name:
-                                                  sid = "GCI005"
-                                              elif 'south africa' in name or 'hluhluwe' in name or 'gci006' in name:
-                                                  sid = "GCI006"
-                                              
-                                              if sid and val > 0:
-                                                  stations[sid] = round(float(val), 2)
-                                                  total += val
-                                                  count += 1
-                                  
-                                  if stations and count > 0:
-                                      print(f"Successfully scraped {count} stations")
-                                      return {
-                                          "global_avg": round(total/count, 2),
-                                          "stations": stations,
-                                          "active_stations": count,
-                                          "scrape_status": "success"
-                                      }
-                              except json.JSONDecodeError as e:
-                                  continue
-                              except Exception as e:
-                                  continue
-                                  
-                      print("Could not parse data from HTML")
-              except requests.exceptions.Timeout:
-                  print("Request timeout")
-              except requests.exceptions.RequestException as e:
-                  print(f"Request error: {e}")
+                  # Execute JS to pull data directly from Highcharts object
+                  script = """
+                  if (typeof Highcharts !== 'undefined' && Highcharts.charts.length > 0) {
+                      return Highcharts.charts[0].series.map(s => ({
+                          name: s.name, 
+                          data: s.options.data
+                      }));
+                  } else {
+                      return null;
+                  }
+                  """
+                  raw_data = driver.execute_script(script)
+                  return raw_data
               except Exception as e:
-                  print(f"Unexpected error: {e}")
-              
-              return None
+                  print(f"Browser Error: {e}")
+                  return None
+              finally:
+                  driver.quit()
 
-          def generate_realistic_data():
-              """Generate realistic Schumann resonance values when scraping fails"""
-              # Base Schumann frequency is around 7.83 Hz, with normal variations
-              base_freq = 7.83
-              stations = {}
-              total = 0
+          def process_data():
+              raw_data = get_selenium_data()
               
-              for station in ["GCI001", "GCI002", "GCI003", "GCI004", "GCI005", "GCI006"]:
-                  # Add small random variation (-0.10 to +0.10 Hz)
-                  variation = round(random.uniform(-0.10, 0.10), 2)
-                  freq = round(base_freq + variation, 2)
-                  stations[station] = freq
-                  total += freq
-              
-              return {
-                  "global_avg": round(total / 6, 2),
-                  "stations": stations,
-                  "active_stations": 6,
-                  "scrape_status": "fallback"
-              }
-
-          # Main execution
-          print("="*50)
-          print("GAIATRYST Frequency Data Update")
-          print("="*50)
-          
-          data = fetch_heartmath_data()
-          is_live = data is not None
-          
-          if data is None:
-              print("Scraping failed - website has no data, showing OFFLINE")
-              data = {
-                  "global_avg": None,
-                  "stations": {},
+              # Default Structure (Offline State)
+              output_data = {
+                  "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'),
+                  "last_update": datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'),
+                  "global_avg": 0.0,
+                  "stations": {k: 0.0 for k in ALL_GCI_STATIONS},
                   "active_stations": 0,
-                  "scrape_status": "failed"
+                  "source": "HeartMath GCI (Selenium)",
+                  "scrape_status": "failed",
+                  "is_live": False
               }
-          
-          # Add metadata
-          now = datetime.now(timezone.utc)
-          data["timestamp"] = now.strftime('%Y-%m-%d %H:%M:%S UTC')
-          data["last_update"] = now.strftime('%Y-%m-%d %H:%M:%S UTC')
-          data["source"] = "HeartMath GCI"
-          data["is_live"] = is_live  # Only true when real data is available
-          
-          # Remove internal status before saving
-          scrape_status = data.pop("scrape_status", "unknown")
 
-          # Save to file
-          with open('data.json', 'w') as f:
-              json.dump(data, f, indent=2)
+              if not raw_data:
+                  print("No data returned from Selenium.")
+                  # We write the failed state so the frontend knows it's outdated
+                  with open(OUTPUT_FILE, 'w') as f:
+                      json.dump(output_data, f, indent=2)
+                  return
 
-          print(f"")
-          print(f"Data saved successfully!")
-          print(f"  Global Average: {data['global_avg']} Hz")
-          print(f"  Active Stations: {data['active_stations']}")
-          print(f"  Scrape Status: {scrape_status}")
-          print(f"  Timestamp: {data['timestamp']}")
+              site_values = []
+              stations_found = {}
+
+              for series in raw_data:
+                  name = series.get('name', '').strip()
+                  # Filter only known GCI stations
+                  if name not in ALL_GCI_STATIONS:
+                      continue
+
+                  points = series.get('data', [])
+                  if points:
+                      # Get the very last point (latest value)
+                      # Highcharts data format is usually [timestamp, value]
+                      last_point = points[-1]
+                      val = last_point[1]
+                      
+                      # Only count positive values as "Active"
+                      if val > 0:
+                          stations_found[name] = val
+                          site_values.append(val)
+                      else:
+                          stations_found[name] = 0
+
+              # Update Output Data if we found stations
+              if stations_found:
+                  active_count = len(site_values)
+                  avg = sum(site_values) / active_count if active_count > 0 else 0
+                  
+                  output_data["global_avg"] = round(avg, 2)
+                  output_data["stations"] = stations_found
+                  output_data["active_stations"] = active_count
+                  output_data["scrape_status"] = "success"
+                  output_data["is_live"] = True
+                  print(f"Success! Global Avg: {avg:.2f}")
+              
+              # Save to JSON
+              with open(OUTPUT_FILE, 'w') as f:
+                  json.dump(output_data, f, indent=2)
+              print(f"Saved to {OUTPUT_FILE}")
+
+          if __name__ == "__main__":
+              process_data()
           EOF
-          
+
       - name: Commit and push changes
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add data.json
+          # Only commit if data.json actually changed
           git diff --quiet && git diff --staged --quiet || git commit -m "Update frequency data - $(date -u +'%Y-%m-%d %H:%M UTC')"
           git push
