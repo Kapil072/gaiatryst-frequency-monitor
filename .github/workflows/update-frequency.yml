@@ -1,4 +1,4 @@
-name: Auto Frequency Data Update
+name: Hourly Frequency Update
 
 on:
   schedule:
