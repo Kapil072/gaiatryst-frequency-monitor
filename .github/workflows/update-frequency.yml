@@ -166,17 +166,23 @@ jobs:
           print("="*50)
           
           data = fetch_heartmath_data()
+          is_live = data is not None
           
           if data is None:
-              print("Scraping failed - using realistic fallback data")
-              data = generate_realistic_data()
+              print("Scraping failed - website has no data, showing OFFLINE")
+              data = {
+                  "global_avg": None,
+                  "stations": {},
+                  "active_stations": 0,
+                  "scrape_status": "failed"
+              }
           
           # Add metadata
           now = datetime.now(timezone.utc)
           data["timestamp"] = now.strftime('%Y-%m-%d %H:%M:%S UTC')
           data["last_update"] = now.strftime('%Y-%m-%d %H:%M:%S UTC')
           data["source"] = "HeartMath GCI"
-          data["is_live"] = True  # Always mark as live so app shows data
+          data["is_live"] = is_live  # Only true when real data is available
           
           # Remove internal status before saving
           scrape_status = data.pop("scrape_status", "unknown")
