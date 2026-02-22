@@ -1,17 +1,17 @@
 {
-  "timestamp": "2026-02-22 11:13:47 UTC",
-  "last_update": "2026-02-22 11:13:47 UTC",
-  "global_avg": 0.0,
+  "timestamp": "2026-02-22 12:25:14 UTC",
+  "last_update": "2026-02-22 12:25:14 UTC",
+  "global_avg": 80.0,
   "stations": {
-    "GCI001": 0.0,
-    "GCI002": 0.0,
-    "GCI003": 0.0,
-    "GCI004": 0.0,
-    "GCI005": 0.0,
-    "GCI006": 0.0
+    "GCI001": 0,
+    "GCI002": 0,
+    "GCI003": 0,
+    "GCI004": 80,
+    "GCI005": 0,
+    "GCI006": 0
   },
-  "active_stations": 0,
+  "active_stations": 1,
   "source": "HeartMath GCI (Selenium)",
-  "scrape_status": "failed",
-  "is_live": false
+  "scrape_status": "success",
+  "is_live": true
 }
