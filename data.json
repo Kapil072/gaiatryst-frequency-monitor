@@ -1,13 +1,13 @@
 {
-  "timestamp": "2026-03-12 09:32:56 UTC",
-  "last_update": "2026-03-12 09:32:56 UTC",
-  "global_avg": 117.0,
+  "timestamp": "2026-03-12 10:29:03 UTC",
+  "last_update": "2026-03-12 10:29:03 UTC",
+  "global_avg": 91.25,
   "stations": {
-    "GCI001": 92,
+    "GCI001": 69,
     "GCI002": 0,
-    "GCI003": 159,
-    "GCI004": 112,
-    "GCI005": 105,
+    "GCI003": 127,
+    "GCI004": 80,
+    "GCI005": 89,
     "GCI006": 0
   },
   "active_stations": 4,
