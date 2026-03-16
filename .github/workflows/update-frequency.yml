@@ -1,75 +1,37 @@
-import os
-import requests
-import time
-from datetime import datetime, timedelta
-from playwright.sync_api import sync_playwright
+name: Update Spectrogram Data
 
-def download_most_recent_available():
-    url = "https://www.heartmath.org/gci/gcms/live-data/spectrogram-calendar/"
-    save_folder = "spectrogram_downloads"
-    
-    if not os.path.exists(save_folder):
-        os.makedirs(save_folder)
+on:
+  schedule:
+    # This runs every 6 hours. Line 7 is usually here.
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    # Allows you to run the script manually from the Actions tab
 
-    # We use sync_playwright() as a context manager
-    with sync_playwright() as p:
-        print("🚀 Launching Browser...")
-        browser = p.chromium.launch(headless=True)
-        
-        # Creating context and page
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
-        page = context.new_page()
+jobs:
+  build:
+    runs-on: ubuntu-latest
 
-        try:
-            print(f"📡 Connecting to {url}...")
-            page.goto(url, wait_until="load", timeout=60000)
-            print("⏳ Waiting for calendar to load...")
-            time.sleep(10) 
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-            found = False
-            # Check last 7 days (1 to 7)
-            for i in range(1, 8):
-                target_date = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
-                print(f"🔍 Checking for data from: {target_date}...")
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-                found_images = []
-                # Scan through all iframes on the page
-                for frame in page.frames:
-                    # Target spectrogram images with the specific date in the URL
-                    selector = 'img[src*="spectrograms"][src*="' + target_date + '"]'
-                    imgs = frame.locator(selector).all()
-                    for img in imgs:
-                        src = img.get_attribute("src")
-                        if src:
-                            found_images.append(src)
+      - name: Install dependencies
+        run: |
+          pip install playwright requests
+          python -m playwright install chromium
 
-                if len(found_images) > 0:
-                    print(f"✅ Found {len(found_images)} images for {target_date}!")
-                    for src in found_images:
-                        file_name = src.split("/")[-1].split("?")[0]
-                        file_path = os.path.join(save_folder, file_name)
-                        
-                        # Use requests to download the binary content
-                        response = requests.get(src, timeout=15)
-                        if response.status_code == 200:
-                            with open(file_path, 'wb') as f:
-                                f.write(response.content)
-                            print(f"   💾 Saved: {file_name}")
-                    
-                    found = True
-                    break 
-                else:
-                    print(f"   ⚠️ No data for {target_date}, checking previous day...")
+      - name: Run Scraper
+        run: python latest_available.py
 
-            if not found:
-                print("❌ No data found in the last 7 days.")
-
-        except Exception as e:
-            print(f"⚠️ Error occurred: {e}")
-        finally:
-            browser.close()
-
-if __name__ == "__main__":
-    download_most_recent_available()
+      - name: Commit and Push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add spectrogram_downloads/*
+          git commit -m "Update latest spectrogram [skip ci]" || echo "No changes to commit"
+          git push
