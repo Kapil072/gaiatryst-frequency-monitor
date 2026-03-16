@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-03-16 11:08:33 UTC",
+  "timestamp": "2026-03-16 11:16:54 UTC",
   "global_avg": 0.0,
   "stations": {
     "GCI001": 0.0,
@@ -10,6 +10,6 @@
     "GCI006": 0.0
   },
   "active_stations": 0,
-  "source": "HeartMath Spectrogram Analysis (OpenCV)",
-  "scrape_status": "failed"
+  "source": "HeartMath Spectrogram Analysis",
+  "status": "failed"
 }
