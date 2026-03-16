@@ -2,8 +2,12 @@ name: Hourly Frequency Update
 
 on:
   schedule:
-    - cron: '0 * * * *'
-  workflow_dispatch:
+    - cron: '0 * * * *'  # Runs at minute 0 of every hour
+  workflow_dispatch:      # Allows you to trigger it manually via a button
+
+# This fixes the Node.js 20 deprecation error
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
   contents: write
@@ -39,38 +43,44 @@ jobs:
           from selenium.webdriver.chrome.options import Options
           from webdriver_manager.chrome import ChromeDriverManager
 
+          # --- CONFIG ---
           TARGET_URL = "https://www.heartmath.org/gci/gcms/live-data/spectrogram-calendar/"
           ALL_GCI_STATIONS = ["GCI001", "GCI002", "GCI003", "GCI004", "GCI005", "GCI006"]
           OUTPUT_FILE = "data.json"
 
           def analyze_spectrogram(image_path):
+              # Load spectrogram
               img = cv2.imread(image_path)
               if img is None:
-                  print(f"❌ OpenCV Failed to load image: {image_path}")
+                  print(f"❌ Image not found or failed to load: {image_path}")
                   return 0.0
 
+              # Convert to grayscale and blur
               gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
               gray = cv2.GaussianBlur(gray, (5, 5), 0)
               height = gray.shape[0]
 
+              # Spectrogram frequency range
               FMAX = 50
               row_intensity = np.mean(gray, axis=1)
 
+              # Convert 7–9 Hz region into pixel coordinates
               low_freq = 7
               high_freq = 9
 
               y_low = int(height * (1 - high_freq / FMAX))
               y_high = int(height * (1 - low_freq / FMAX))
-              
-              print(f"📊 OpenCV Debug for {image_path}: Image Height={height}px, Crop Region Y: {y_low} to {y_high}")
 
               region = row_intensity[y_low:y_high]
+              
               if len(region) == 0:
-                  print(f"❌ Crop region empty for {image_path}")
                   return 0.0
 
+              # Find strongest signal in this region
               peak_index = np.argmax(region)
               peak_row = peak_index + y_low
+
+              # Convert back to frequency
               frequency = (1 - peak_row / height) * FMAX
               return round(frequency, 2)
 
@@ -78,7 +88,7 @@ jobs:
               print("Launching headless browser...")
               chrome_options = Options()
               chrome_options.add_argument("--headless")
-              chrome_options.add_argument("--window-size=1920,1080") # Set explicit window size
+              chrome_options.add_argument("--window-size=1920,1080")
               chrome_options.add_argument("--no-sandbox")
               chrome_options.add_argument("--disable-dev-shm-usage")
 
@@ -98,19 +108,17 @@ jobs:
               site_values = []
 
               try:
-                  print(f"Navigating to {TARGET_URL}...")
                   driver.get(TARGET_URL)
-                  time.sleep(15) # Wait for elements to load
+                  # Wait for the calendar images to load
+                  time.sleep(15)
                   
-                  # 1. Take a screenshot to see what Selenium sees
+                  # Take a debug screenshot
                   driver.save_screenshot("debug_browser_screenshot.png")
-                  print("📸 Saved browser screenshot as 'debug_browser_screenshot.png'")
+                  print("📸 Saved browser screenshot for debugging.")
 
+                  # Find all images on the page
                   images = driver.find_elements("tag name", "img")
                   img_urls = [img.get_attribute("src") for img in images if img.get_attribute("src")]
-                  
-                  print(f"🔍 Found {len(img_urls)} total images on the page.")
-                  print("🔗 First 5 image URLs found:", img_urls[:5])
 
                   for station in ALL_GCI_STATIONS:
                       target_img_url = None
@@ -120,38 +128,42 @@ jobs:
                               break
                       
                       if target_img_url:
-                          print(f"✅ Found URL for {station}: {target_img_url}")
+                          print(f"✅ Downloading spectrogram for {station}...")
                           img_data = requests.get(target_img_url).content
                           img_path = f"{station}_spectrogram.png"
                           
                           with open(img_path, 'wb') as handler:
                               handler.write(img_data)
                           
+                          # Analyze the downloaded image
                           freq = analyze_spectrogram(img_path)
-                          print(f"📈 {station} Calculated Frequency: {freq} Hz")
+                          print(f"📈 {station} Schumann Resonance Frequency: {freq} Hz")
 
                           if freq > 0:
                               stations_found[station] = freq
                               site_values.append(freq)
                       else:
-                          print(f"⚠️ Could not find an image URL containing '{station.lower()}'")
+                          print(f"⚠️ Could not find an image URL for {station}")
 
               except Exception as e:
                   print(f"❌ Error during execution: {e}")
               finally:
                   driver.quit()
 
+              # Compile final stats
               if stations_found:
                   active_count = len(site_values)
                   avg = sum(site_values) / active_count if active_count > 0 else 0
+
                   output_data["global_avg"] = round(avg, 2)
                   output_data["stations"] = stations_found
                   output_data["active_stations"] = active_count
                   output_data["scrape_status"] = "success"
                   print(f"🎉 Success! Global Avg: {avg:.2f} Hz")
               else:
-                  print("❌ No spectrograms analyzed successfully.")
+                  print("❌ No data successfully extracted.")
 
+              # Save to JSON
               with open(OUTPUT_FILE, 'w') as f:
                   json.dump(output_data, f, indent=2)
 
@@ -161,7 +173,7 @@ jobs:
 
       - name: Upload Debug Artifacts
         uses: actions/upload-artifact@v4
-        if: always()  # This ensures the files upload even if the script crashes
+        if: always()  # Uploads the screenshot and images even if it fails
         with:
           name: scraping-debug-files
           path: |
@@ -173,6 +185,7 @@ jobs:
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
+          touch data.json # Ensures the file exists so git doesn't crash
           git add data.json
           git diff --quiet && git diff --staged --quiet || git commit -m "Update frequency data - $(date -u +'%Y-%m-%d %H:%M UTC')"
           git push
