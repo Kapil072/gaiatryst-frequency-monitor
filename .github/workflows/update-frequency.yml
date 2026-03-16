@@ -22,118 +22,136 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install selenium webdriver-manager
+          pip install selenium webdriver-manager opencv-python-headless numpy requests
 
-      - name: Fetch and save data
+      - name: Fetch, Analyze, and Save Data
         run: |
           python << 'EOF'
           import json
           import time
           import datetime
-          import sys
+          import os
+          import requests
+          import cv2
+          import numpy as np
           from selenium import webdriver
           from selenium.webdriver.chrome.service import Service
           from selenium.webdriver.chrome.options import Options
           from webdriver_manager.chrome import ChromeDriverManager
 
           # --- CONFIG ---
-          TARGET_URL = "https://nocc.heartmath.org/power_levels/public/charts/power_levels.html"
+          TARGET_URL = "https://www.heartmath.org/gci/gcms/live-data/spectrogram-calendar/"
           ALL_GCI_STATIONS = ["GCI001", "GCI002", "GCI003", "GCI004", "GCI005", "GCI006"]
           OUTPUT_FILE = "data.json"
 
-          def get_selenium_data():
-              print("Launch headless browser...")
+          def analyze_spectrogram(image_path):
+              """Your OpenCV logic to find peak frequency in 7-9 Hz range."""
+              img = cv2.imread(image_path)
+              if img is None:
+                  print(f"Failed to load image: {image_path}")
+                  return 0.0
+
+              gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+              gray = cv2.GaussianBlur(gray, (5, 5), 0)
+              height = gray.shape[0]
+
+              FMAX = 50
+              row_intensity = np.mean(gray, axis=1)
+
+              low_freq = 7
+              high_freq = 9
+
+              y_low = int(height * (1 - high_freq / FMAX))
+              y_high = int(height * (1 - low_freq / FMAX))
+
+              region = row_intensity[y_low:y_high]
               
+              if len(region) == 0:
+                  return 0.0
+
+              peak_index = np.argmax(region)
+              peak_row = peak_index + y_low
+
+              frequency = (1 - peak_row / height) * FMAX
+              return round(frequency, 2)
+
+          def process_data():
+              print("Launching headless browser...")
               chrome_options = Options()
               chrome_options.add_argument("--headless")
               chrome_options.add_argument("--no-sandbox")
               chrome_options.add_argument("--disable-dev-shm-usage")
-              
-              # Auto-install correct driver
+
               service = Service(ChromeDriverManager().install())
               driver = webdriver.Chrome(service=service, options=chrome_options)
-              
-              try:
-                  driver.get(TARGET_URL)
-                  # Critical: Wait for Highcharts animation/loading
-                  time.sleep(15) 
-                  
-                  # Execute JS to pull data directly from Highcharts object
-                  script = """
-                  if (typeof Highcharts !== 'undefined' && Highcharts.charts.length > 0) {
-                      return Highcharts.charts[0].series.map(s => ({
-                          name: s.name, 
-                          data: s.options.data
-                      }));
-                  } else {
-                      return null;
-                  }
-                  """
-                  raw_data = driver.execute_script(script)
-                  return raw_data
-              except Exception as e:
-                  print(f"Browser Error: {e}")
-                  return None
-              finally:
-                  driver.quit()
 
-          def process_data():
-              raw_data = get_selenium_data()
-              
-              # Default Structure (Offline State)
               output_data = {
                   "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'),
-                  "last_update": datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'),
                   "global_avg": 0.0,
                   "stations": {k: 0.0 for k in ALL_GCI_STATIONS},
                   "active_stations": 0,
-                  "source": "HeartMath GCI (Selenium)",
-                  "scrape_status": "failed",
-                  "is_live": False
+                  "source": "HeartMath Spectrogram Analysis (OpenCV)",
+                  "scrape_status": "failed"
               }
 
-              if not raw_data:
-                  print("No data returned from Selenium.")
-                  # We write the failed state so the frontend knows it's outdated
-                  with open(OUTPUT_FILE, 'w') as f:
-                      json.dump(output_data, f, indent=2)
-                  return
-
-              site_values = []
               stations_found = {}
+              site_values = []
 
-              for series in raw_data:
-                  name = series.get('name', '').strip()
-                  # Filter only known GCI stations
-                  if name not in ALL_GCI_STATIONS:
-                      continue
+              try:
+                  driver.get(TARGET_URL)
+                  # Wait for calendar and images to load fully
+                  time.sleep(15)
 
-                  points = series.get('data', [])
-                  if points:
-                      # Get the very last point (latest value)
-                      # Highcharts data format is usually [timestamp, value]
-                      last_point = points[-1]
-                      val = last_point[1]
+                  # Extract all image URLs from the page
+                  images = driver.find_elements("tag name", "img")
+                  img_urls = [img.get_attribute("src") for img in images if img.get_attribute("src")]
+
+                  for station in ALL_GCI_STATIONS:
+                      target_img_url = None
+                      # Find the image URL that matches the station ID
+                      for url in img_urls:
+                          if station.lower() in url.lower():
+                              target_img_url = url
+                              break
                       
-                      # Only count positive values as "Active"
-                      if val > 0:
-                          stations_found[name] = val
-                          site_values.append(val)
-                      else:
-                          stations_found[name] = 0
+                      if target_img_url:
+                          print(f"Found spectrogram for {station}, downloading...")
+                          img_data = requests.get(target_img_url).content
+                          img_path = f"{station}_spectrogram.png"
+                          
+                          with open(img_path, 'wb') as handler:
+                              handler.write(img_data)
+                          
+                          # Analyze the downloaded image
+                          freq = analyze_spectrogram(img_path)
+                          print(f"{station} Frequency: {freq} Hz")
 
-              # Update Output Data if we found stations
+                          if freq > 0:
+                              stations_found[station] = freq
+                              site_values.append(freq)
+
+                          # Clean up the image file so it doesn't get committed to git
+                          if os.path.exists(img_path):
+                              os.remove(img_path)
+
+              except Exception as e:
+                  print(f"Error during execution: {e}")
+              finally:
+                  driver.quit()
+
+              # Finalize output data
               if stations_found:
                   active_count = len(site_values)
                   avg = sum(site_values) / active_count if active_count > 0 else 0
-                  
+
                   output_data["global_avg"] = round(avg, 2)
                   output_data["stations"] = stations_found
                   output_data["active_stations"] = active_count
                   output_data["scrape_status"] = "success"
-                  output_data["is_live"] = True
-                  print(f"Success! Global Avg: {avg:.2f}")
-              
+                  print(f"Success! Global Avg: {avg:.2f} Hz")
+              else:
+                  print("No spectrograms analyzed successfully.")
+
               # Save to JSON
               with open(OUTPUT_FILE, 'w') as f:
                   json.dump(output_data, f, indent=2)
