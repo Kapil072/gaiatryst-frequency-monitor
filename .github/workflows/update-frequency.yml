@@ -2,10 +2,10 @@ name: Update Spectrogram Data
 
 on:
   schedule:
-    # Runs every 6 hours. The quotes around the time are mandatory.
+    # Runs every 6 hours at minute 0 (UTC) - Updated for Node.js 24 compatibility
     - cron: '0 */6 * * *'
   workflow_dispatch:
-    # This allows you to click a "Run workflow" button manually
+    # Manual trigger available
 
 permissions:
   contents: write  # This is REQUIRED so the bot is allowed to save the images back to your repo
@@ -16,10 +16,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v5  # Node.js 24 compatible
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v6  # Node.js 24 compatible
         with:
           python-version: '3.12'
 
