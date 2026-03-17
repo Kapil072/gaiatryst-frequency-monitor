@@ -1,5 +1,5 @@
-name: earth_3d_viewer
-description: A new Flutter project.
+name: gaiatryst_schumann_sync
+description: Gaiatryst Schumann Sync Link - Schumann Resonance monitoring and visualization
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -26,7 +26,7 @@ flutter:
   assets:
     - assets/13902_Earth_v1_l3.obj
     - assets/13902_Earth_v1_l3.mtl
-    - assets/8k_earth_daymap.jpg
+    - assets/IMG_8725.JPG.jpeg
     - assets/dot.jpeg
     - assets/WhatsApp_Image_2025-12-28_at_5.00.39_PM-removebg-preview (1).png
     - assets/why this app.png

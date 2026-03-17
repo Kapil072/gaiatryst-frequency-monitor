@@ -11,7 +11,8 @@ import 'package:http/http.dart' as http;
 // DATA URL - GitHub Raw URL (automatically updated twice daily)
 // ============================================================================
 // IMPORTANT: Replace YOUR_USERNAME and YOUR_REPO with your actual GitHub details
-const String DATA_URL = 'https://raw.githubusercontent.com/Kapil072/gaiatryst-frequency-monitor/main/data.json';
+const String DATA_URL =
+    'https://raw.githubusercontent.com/Kapil072/gaiatryst-frequency-monitor/main/data.json';
 
 void main() {
   runApp(const MyApp());
@@ -23,7 +24,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Perfect Earth Globe',
+      title: 'Gaiatryst Schumann Sync Link',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
@@ -47,7 +48,10 @@ class EarthViewPage extends StatefulWidget {
 
 class _EarthViewPageState extends State<EarthViewPage>
     with TickerProviderStateMixin {
-  Object? _earthParent;
+  // Separated containers for tilt and spin
+  Object? _tiltContainer;
+  Object? _spinContainer;
+
   final List<Object> _locationDots = [];
 
   bool _isLoading = true;
@@ -69,7 +73,7 @@ class _EarthViewPageState extends State<EarthViewPage>
     'GCI005': 'Northland, New Zealand',
     'GCI006': 'Hluhluwe, South Africa',
   };
- final List<Map<String, dynamic>> _locations = [
+  final List<Map<String, dynamic>> _locations = [
     {'name': 'California, USA', 'lat': 15.7783, 'lon': -150.4179},
     {'name': 'Hofuf, Saudi Arabia', 'lat': 43.8813, 'lon': 80.1694},
     {'name': 'Lithuania', 'lat': -38.58, 'lon': -35.5613},
@@ -78,39 +82,39 @@ class _EarthViewPageState extends State<EarthViewPage>
     {'name': 'Hluhluwe, South Africa', 'lat': -50.0186, 'lon': 32.2813},
   ];
 
-
   @override
   void initState() {
     super.initState();
 
     double time = 0;
-    _rotationTimer = Timer.periodic(const Duration(milliseconds: 30), (timer) {
-      setState(() {
-        time += 0.15; // Blink Speed
+    int frameCount = 0;
+    _rotationTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
+      if (!mounted) return;
 
-        // 1. Rotate Earth
-        if (_earthParent != null) {
-          _rotationY += 0.2;
+      frameCount++;
+      // Skip every other frame on low-end devices (30 FPS for 3D)
+      if (frameCount % 2 == 0) return;
+
+      setState(() {
+        time += 0.06; // Slower for smoother low-end performance
+
+        // 1. Rotate Earth on its local axis
+        if (_spinContainer != null) {
+          _rotationY += 0.25; // Rotation increment
           if (_rotationY >= 360) _rotationY = 0;
-          _earthParent!.rotation.y = _rotationY;
-          _earthParent!.updateTransform();
+
+          // Apply spin ONLY to the child object.
+          // The parent container maintains the fixed -23.5 tilt.
+          _spinContainer!.rotation.y = _rotationY;
+          _spinContainer!.updateTransform();
         }
 
-        // 2. Pulse Dots (Realistic Breathing Effect - ~3 second per breath)
-        final double breathPhase =
-            math.cos(time * 1.0472); // Pi/3 for 3-second period (3.14159/3)
-        final double pulseSize = 0.025 +
-            (0.015 * breathPhase); // Varies from 0.01 to 0.04 (0.025 ± 0.015)
+        // 2. Pulse Dots - simplified calculation
+        final double breathPhase = math.cos(time * 1.0472);
+        final double pulseSize = 0.025 + (0.015 * breathPhase);
+        final double brightness = 0.2 + (0.8 * (breathPhase + 1.0) / 2.0);
 
-        // Brightness pulses in sync with breathing
-        final double brightness =
-            0.2 + (0.8 * (breathPhase + 1.0) / 2.0); // Range 0.2 to 1.0
-
-        final Vector3 blinkColor = Vector3(
-            1.0 * brightness, // Red
-            1.0 * brightness, // Green
-            1.0 * brightness // Blue
-            );
+        final Vector3 blinkColor = Vector3(brightness, brightness, brightness);
 
         for (var dot in _locationDots) {
           dot.scale.setValues(pulseSize, pulseSize, pulseSize);
@@ -126,10 +130,14 @@ class _EarthViewPageState extends State<EarthViewPage>
 
     _starsController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 60),
+      duration: const Duration(seconds: 300), // Very slow for low-end devices
     )..repeat();
+
+    // Minimal star updates - only 5 times per second
     _starsController.addListener(() {
-      setState(() {});
+      if (mounted && (_starsController.value * 100).toInt() % 20 == 0) {
+        setState(() {});
+      }
     });
 
     _loadFrequencyData();
@@ -183,57 +191,67 @@ class _EarthViewPageState extends State<EarthViewPage>
   /// Loads frequency data from the GitHub raw JSON file
   Future<void> _loadFrequencyData() async {
     try {
-      debugPrint('Fetching data from: $DATA_URL');
-      final response = await http.get(
-        Uri.parse(DATA_URL)
-      ).timeout(const Duration(seconds: 15));
-      
+      debugPrint('🔄 Fetching data from: $DATA_URL');
+      final response = await http
+          .get(Uri.parse(DATA_URL))
+          .timeout(const Duration(seconds: 15));
+
+      debugPrint('📡 Response status: ${response.statusCode}');
+      debugPrint('📦 Response body length: ${response.body.length} bytes');
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        
+        debugPrint('✅ JSON decoded successfully');
+
         // Check if data is live (not offline/failed fetch)
         final bool isLive = data['is_live'] == true;
         final globalAvg = data['global_avg'];
-        
+
+        debugPrint('🔍 is_live: $isLive, global_avg: $globalAvg');
+
         // If data is not live or global_avg is null, show OFFLINE
         if (!isLive || globalAvg == null) {
           debugPrint('⚠️ Data not available - showing OFFLINE');
           setState(() {
-            _averageFrequency = null;  // This will show OFFLINE
+            _averageFrequency = null; // This will show OFFLINE
             _countryFrequencies = {};
           });
           return;
         }
-        
+
         final newAvg = (globalAvg as num).toDouble();
         final stationsMap = data['stations'] as Map<String, dynamic>;
-        
+
         final Map<String, double> newCountryFreqs = {};
         for (final station in _countryNames.keys) {
           final value = stationsMap[station];
           if (value != null) {
-            final freq = (value is num) ? value.toDouble() : double.tryParse(value.toString());
+            final freq = (value is num)
+                ? value.toDouble()
+                : double.tryParse(value.toString());
             if (freq != null && freq > 0) {
               newCountryFreqs[station] = freq;
             }
           }
         }
-        
+
         setState(() {
           _averageFrequency = newAvg;
           _countryFrequencies = newCountryFreqs;
         });
-        debugPrint('✅ Data loaded: $newAvg Hz from ${newCountryFreqs.length} stations');
+        debugPrint(
+            '✅ Data loaded: $newAvg Hz from ${newCountryFreqs.length} stations');
       } else {
-        debugPrint('⚠️ Failed to load data: ${response.statusCode}');
+        debugPrint('⚠️ Failed to load data: HTTP ${response.statusCode}');
         setState(() {
-          _averageFrequency = null;  // Show OFFLINE on HTTP error
+          _averageFrequency = null; // Show OFFLINE on HTTP error
         });
       }
     } catch (e) {
       debugPrint('❌ Error loading frequency data: $e');
+      debugPrint('❌ Stack trace: ${StackTrace.current}');
       setState(() {
-        _averageFrequency = null;  // Show OFFLINE on error
+        _averageFrequency = null; // Show OFFLINE on error
       });
     }
   }
@@ -251,12 +269,11 @@ class _EarthViewPageState extends State<EarthViewPage>
       ..setColor(const Color.fromARGB(255, 255, 255, 255), 0.35, 1.0, 0.6);
 
     try {
-      // 1. Create the Earth Model
+      // 1. Create the Earth Model (This is now our Spin Container)
       final earthModel = Object(
         fileName: 'assets/13902_Earth_v1_l3.obj',
-        scale: Vector3(3.0, 3.0, 3.0),
-        rotation: Vector3(-90.0, 0, 0), // Upright Rotation
-        lighting: true,
+        scale: Vector3(3.5, 3.5, 3.5),
+        lighting: false, // Disable lighting for better performance
         backfaceCulling: true,
       );
 
@@ -273,25 +290,33 @@ class _EarthViewPageState extends State<EarthViewPage>
         final dot = Object(
           fileName: 'assets/13902_Earth_v1_l3.obj',
           position: pos,
-          // SCALE: Initial scale
           scale: Vector3(0.04, 0.04, 0.04),
-          lighting: true,
+          lighting: false,
         );
 
         // Apply the dot texture
         _applyDotTexture(dot);
 
         _locationDots.add(dot);
+
+        // Add dots directly to the spinning Earth so they rotate with it
         earthModel.add(dot);
       }
 
-      // 3. Create Parent Container
-      final container = Object(name: 'container');
-      container.add(earthModel);
-      scene.world.add(container);
+      // 3. Create Parent Container (This is now our Tilt Container)
+      final tiltContainer = Object(name: 'tiltContainer');
+
+      // Apply the REAL Earth axial tilt to the parent ONCE
+      // Increased for more dramatic rotation effect
+      tiltContainer.rotation.x = -45.0; // 45° tilt (increased from 23.5°)
+
+      // Put the spinning Earth inside the tilted container
+      tiltContainer.add(earthModel);
+      scene.world.add(tiltContainer);
 
       setState(() {
-        _earthParent = container;
+        _tiltContainer = tiltContainer;
+        _spinContainer = earthModel;
         _isLoading = false;
       });
 
@@ -326,7 +351,7 @@ class _EarthViewPageState extends State<EarthViewPage>
     }
 
     try {
-      final data = await rootBundle.load('assets/8k_earth_daymap.jpg');
+      final data = await rootBundle.load('assets/IMG_8725.JPG.jpeg');
       final bytes = data.buffer.asUint8List();
       final image = await decodeImageFromList(bytes);
       target.mesh.texture = image;
@@ -347,14 +372,16 @@ class _EarthViewPageState extends State<EarthViewPage>
         backfaceCulling: true,
       );
 
-      final container = Object(name: 'container');
-      container.add(sphereObj);
-      scene.world.add(container);
+      final tiltContainer = Object(name: 'tiltContainer');
+      tiltContainer.rotation.x = -23.5; // Apply static tilt
+      tiltContainer.add(sphereObj);
+      scene.world.add(tiltContainer);
 
       _applyCustomTexture(sphereObj);
 
       setState(() {
-        _earthParent = container;
+        _tiltContainer = tiltContainer;
+        _spinContainer = sphereObj; // Spin the sphere
         _isLoading = false;
       });
     } catch (error) {
@@ -379,14 +406,10 @@ class _EarthViewPageState extends State<EarthViewPage>
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          AnimatedBuilder(
-            animation: _starsController,
-            builder: (context, child) {
-              return CustomPaint(
-                painter: StarryBackgroundPainter(),
-                size: MediaQuery.of(context).size,
-              );
-            },
+          // Static star background - no animation for maximum performance
+          CustomPaint(
+            painter: StarryBackgroundPainter(),
+            size: MediaQuery.of(context).size,
           ),
           Positioned.fill(
             child: Padding(
@@ -401,7 +424,7 @@ class _EarthViewPageState extends State<EarthViewPage>
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       SizedBox(
-                        height: MediaQuery.of(context).size.height * 0.6,
+                        height: MediaQuery.of(context).size.height * 0.60,
                         child: Center(
                           child: Stack(
                             alignment: Alignment.center,
@@ -446,43 +469,39 @@ class _EarthViewPageState extends State<EarthViewPage>
                           ),
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            const Text(
-                              'Average Data',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                                letterSpacing: 1.0,
+                      Transform.translate(
+                        offset: const Offset(0, -60),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Text(
+                                _averageFrequency != null
+                                    ? '${_averageFrequency!.toStringAsFixed(2)} Hz'
+                                    : 'OFFLINE',
+                                style: TextStyle(
+                                  color: _averageFrequency != null
+                                      ? Colors.cyan
+                                      : Colors.red,
+                                  fontSize: 84,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 1.0,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _averageFrequency != null 
-                                ? '${_averageFrequency!.toStringAsFixed(2)} Hz'
-                                : 'OFFLINE',
-                              style: TextStyle(
-                                color: _averageFrequency != null ? Colors.cyan : Colors.red,
-                                fontSize: 56,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 1.0,
+                              const SizedBox(height: 4),
+                              Text(
+                                _averageFrequency != null
+                                    ? 'Live'
+                                    : 'No Connection',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _averageFrequency != null ? 'Live' : 'No Connection',
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                       const SizedBox(height: 15),
@@ -496,86 +515,155 @@ class _EarthViewPageState extends State<EarthViewPage>
                                 'Monitoring Stations',
                                 style: TextStyle(
                                   color: Colors.white,
-                                  fontSize: 14,
+                                  fontSize: 20,
                                   fontWeight: FontWeight.w600,
                                   letterSpacing: 0.5,
                                 ),
                               ),
                               const SizedBox(height: 8),
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 6,
-                                alignment: WrapAlignment.center,
-                                children: _countryNames.entries.map((entry) {
-                                  final station = entry.key;
-                                  final countryName = entry.value;
-                                  final frequency =
-                                      _countryFrequencies[station];
-                                  final isActive =
-                                      frequency != null && frequency > 0;
+                              Column(
+                                children: [
+                                  // First Row - 3 stations
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: _countryNames.entries
+                                        .take(3)
+                                        .map((entry) {
+                                      final station = entry.key;
+                                      final countryName = entry.value;
+                                      final frequency =
+                                          _countryFrequencies[station];
+                                      final isActive =
+                                          frequency != null && frequency > 0;
 
-                                  return Container(
-                                    width: 110,
-                                    height: 80,
-                                    decoration: BoxDecoration(
-                                      color: isActive
-                                          ? Colors.blue.withOpacity(0.15)
-                                          : Colors.grey.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(
-                                        color: isActive
-                                            ? Colors.blue.withOpacity(0.5)
-                                            : Colors.grey.withOpacity(0.3),
-                                        width: 1.5,
-                                      ),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Text(
-                                          station,
-                                          style: TextStyle(
+                                      return Container(
+                                        width: 115,
+                                        height: 70,
+                                        margin: const EdgeInsets.symmetric(
+                                            horizontal: 4, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: isActive
+                                              ? Colors.blue.withOpacity(0.15)
+                                              : Colors.grey.withOpacity(0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                          border: Border.all(
                                             color: isActive
-                                                ? Colors.blue.shade300
-                                                : Colors.grey,
-                                            fontSize: 9,
-                                            fontWeight: FontWeight.bold,
+                                                ? Colors.blue.withOpacity(0.5)
+                                                : Colors.grey.withOpacity(0.3),
+                                            width: 1.5,
                                           ),
                                         ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          countryName,
-                                          style: TextStyle(
-                                            color: isActive
-                                                ? Colors.white
-                                                : Colors.grey,
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w600,
-                                            height: 1.1,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 4, vertical: 6),
+                                        child: Column(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Text(
+                                              countryName,
+                                              style: TextStyle(
+                                                color: isActive
+                                                    ? Colors.white
+                                                    : Colors.grey,
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                                height: 1.1,
+                                              ),
+                                              textAlign: TextAlign.center,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              isActive
+                                                  ? '${frequency.toStringAsFixed(1)} Hz'
+                                                  : 'Offline',
+                                              style: TextStyle(
+                                                color: isActive
+                                                    ? Colors.cyanAccent
+                                                    : Colors.grey.shade600,
+                                                fontSize: isActive ? 16 : 13,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                              textAlign: TextAlign.center,
+                                            ),
+                                          ],
                                         ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          isActive
-                                              ? '${frequency.toStringAsFixed(1)} Hz'
-                                              : 'Offline',
-                                          style: TextStyle(
+                                      );
+                                    }).toList(),
+                                  ),
+                                  // Second Row - 3 stations
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: _countryNames.entries
+                                        .skip(3)
+                                        .map((entry) {
+                                      final station = entry.key;
+                                      final countryName = entry.value;
+                                      final frequency =
+                                          _countryFrequencies[station];
+                                      final isActive =
+                                          frequency != null && frequency > 0;
+
+                                      return Container(
+                                        width: 115,
+                                        height: 70,
+                                        margin: const EdgeInsets.symmetric(
+                                            horizontal: 4, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: isActive
+                                              ? Colors.blue.withOpacity(0.15)
+                                              : Colors.grey.withOpacity(0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                          border: Border.all(
                                             color: isActive
-                                                ? Colors.cyanAccent
-                                                : Colors.grey.shade600,
-                                            fontSize: isActive ? 13 : 10,
-                                            fontWeight: FontWeight.bold,
+                                                ? Colors.blue.withOpacity(0.5)
+                                                : Colors.grey.withOpacity(0.3),
+                                            width: 1.5,
                                           ),
-                                          textAlign: TextAlign.center,
                                         ),
-                                      ],
-                                    ),
-                                  );
-                                }).toList(),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 4, vertical: 6),
+                                        child: Column(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Text(
+                                              countryName,
+                                              style: TextStyle(
+                                                color: isActive
+                                                    ? Colors.white
+                                                    : Colors.grey,
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                                height: 1.1,
+                                              ),
+                                              textAlign: TextAlign.center,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              isActive
+                                                  ? '${frequency.toStringAsFixed(1)} Hz'
+                                                  : 'Offline',
+                                              style: TextStyle(
+                                                color: isActive
+                                                    ? Colors.cyanAccent
+                                                    : Colors.grey.shade600,
+                                                fontSize: isActive ? 16 : 13,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                              textAlign: TextAlign.center,
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -593,11 +681,11 @@ class _EarthViewPageState extends State<EarthViewPage>
                               crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
                                 const Text(
-                                  'GAIATRYST SYNOPSIS',
+                                  'Gaiatryst Schumann Sync Link',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white,
-                                    fontSize: 22,
+                                    fontSize: 26,
                                     fontWeight: FontWeight.w700,
                                     letterSpacing: 1.0,
                                   ),
@@ -608,7 +696,7 @@ class _EarthViewPageState extends State<EarthViewPage>
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white70,
-                                    fontSize: 14,
+                                    fontSize: 17,
                                     height: 1.6,
                                   ),
                                 ),
@@ -618,7 +706,7 @@ class _EarthViewPageState extends State<EarthViewPage>
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white70,
-                                    fontSize: 14,
+                                    fontSize: 17,
                                     height: 1.6,
                                   ),
                                 ),
@@ -628,7 +716,7 @@ class _EarthViewPageState extends State<EarthViewPage>
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white,
-                                    fontSize: 18,
+                                    fontSize: 24,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
@@ -656,29 +744,20 @@ class _EarthViewPageState extends State<EarthViewPage>
                                     textAlign: TextAlign.center,
                                     style: TextStyle(
                                       color: Colors.blue,
-                                      fontSize: 14,
+                                      fontSize: 17,
                                       decoration: TextDecoration.underline,
                                       decorationColor: Colors.blue,
                                     ),
                                   ),
                                 ),
                                 const SizedBox(height: 20),
-                                const Text(
-                                  'Schumann-Resonant Brain Dynamics',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
                                 const SizedBox(height: 20),
                                 const Text(
                                   'This simple Schumann Resonance monitor is primarily an objective real time reminder that our Earth Mother\'s biosphere continuously electrifies all our species\' inner being with the same subliminal energy waves. They are ancient, ubiquitous and intriguingly identical with our own brains\' most liminal frequencies at their Alpha & Theta wave border, which are also the vibes we autonomically reach when our breath, pulse and neural rhymes sync with others.',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white70,
-                                    fontSize: 14,
+                                    fontSize: 17,
                                     height: 1.6,
                                   ),
                                 ),
@@ -697,7 +776,7 @@ class _EarthViewPageState extends State<EarthViewPage>
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white70,
-                                    fontSize: 14,
+                                    fontSize: 17,
                                     height: 1.6,
                                   ),
                                 ),
@@ -716,7 +795,7 @@ class _EarthViewPageState extends State<EarthViewPage>
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white70,
-                                    fontSize: 12,
+                                    fontSize: 15,
                                     height: 1.4,
                                   ),
                                 ),
@@ -726,7 +805,7 @@ class _EarthViewPageState extends State<EarthViewPage>
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white70,
-                                    fontSize: 14,
+                                    fontSize: 17,
                                     height: 1.6,
                                   ),
                                 ),
@@ -736,7 +815,7 @@ class _EarthViewPageState extends State<EarthViewPage>
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white70,
-                                    fontSize: 14,
+                                    fontSize: 17,
                                     height: 1.6,
                                   ),
                                 ),
@@ -746,7 +825,7 @@ class _EarthViewPageState extends State<EarthViewPage>
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white70,
-                                    fontSize: 14,
+                                    fontSize: 17,
                                     height: 1.6,
                                   ),
                                 ),
@@ -756,7 +835,7 @@ class _EarthViewPageState extends State<EarthViewPage>
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white70,
-                                    fontSize: 14,
+                                    fontSize: 17,
                                     height: 1.6,
                                   ),
                                 ),
@@ -766,7 +845,7 @@ class _EarthViewPageState extends State<EarthViewPage>
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white70,
-                                    fontSize: 14,
+                                    fontSize: 17,
                                     height: 1.6,
                                   ),
                                 ),
@@ -776,7 +855,7 @@ class _EarthViewPageState extends State<EarthViewPage>
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white,
-                                    fontSize: 16,
+                                    fontSize: 20,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
@@ -786,7 +865,7 @@ class _EarthViewPageState extends State<EarthViewPage>
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white,
-                                    fontSize: 16,
+                                    fontSize: 22,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
@@ -796,7 +875,7 @@ class _EarthViewPageState extends State<EarthViewPage>
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white70,
-                                    fontSize: 14,
+                                    fontSize: 17,
                                     height: 1.6,
                                   ),
                                 ),
@@ -806,7 +885,7 @@ class _EarthViewPageState extends State<EarthViewPage>
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white70,
-                                    fontSize: 14,
+                                    fontSize: 19,
                                     height: 1.6,
                                   ),
                                 ),
@@ -816,7 +895,7 @@ class _EarthViewPageState extends State<EarthViewPage>
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white70,
-                                    fontSize: 14,
+                                    fontSize: 19,
                                     height: 1.6,
                                   ),
                                 ),
@@ -826,7 +905,7 @@ class _EarthViewPageState extends State<EarthViewPage>
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white70,
-                                    fontSize: 14,
+                                    fontSize: 19,
                                     height: 1.6,
                                   ),
                                 ),
@@ -836,7 +915,7 @@ class _EarthViewPageState extends State<EarthViewPage>
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white70,
-                                    fontSize: 14,
+                                    fontSize: 19,
                                     height: 1.6,
                                   ),
                                 ),
@@ -868,10 +947,10 @@ class _EarthViewPageState extends State<EarthViewPage>
                     ),
                     const SizedBox(width: 10),
                     const Text(
-                      'GAIATRYST SYNOPSIS',
+                      'Gaiatryst Schumann Sync Link',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 20,
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 0.5,
                       ),
@@ -888,21 +967,26 @@ class _EarthViewPageState extends State<EarthViewPage>
 }
 
 class StarryBackgroundPainter extends CustomPainter {
-  final List<Star> _stars = [];
+  static final List<Star> _stars = [];
+  static bool _initialized = false;
 
   StarryBackgroundPainter() {
-    final random = math.Random(42);
-    for (int i = 0; i < 500; i++) {
-      _stars.add(
-        Star(
-          x: random.nextDouble(),
-          y: random.nextDouble(),
-          size: random.nextDouble() * 2 + 0.5,
-          baseOpacity: random.nextDouble() * 0.7 + 0.3,
-          twinkleSpeed: random.nextDouble() * 5 + 3,
-          twinkleOffset: random.nextDouble() * math.pi * 2,
-        ),
-      );
+    if (!_initialized) {
+      final random = math.Random(42);
+      // Reduced to 100 stars for low-end devices
+      for (int i = 0; i < 100; i++) {
+        _stars.add(
+          Star(
+            x: random.nextDouble(),
+            y: random.nextDouble(),
+            size: random.nextDouble() * 1.5 + 0.5,
+            baseOpacity: random.nextDouble() * 0.5 + 0.3,
+            twinkleSpeed: random.nextDouble() * 3 + 2,
+            twinkleOffset: random.nextDouble() * math.pi * 2,
+          ),
+        );
+      }
+      _initialized = true;
     }
   }
 
