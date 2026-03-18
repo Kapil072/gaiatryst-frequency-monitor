@@ -47,6 +47,9 @@ jobs:
           # FIXED: Changed from spectrogram_downloads/ to match actual script output
           git add spectrograms_*/
           
+          # Add data.json for Flutter app integration
+          git add data.json
+          
           # Commit the changes. If there are no new images, it echoes a message instead of failing.
           # [skip ci] prevents this commit from triggering another workflow loop
           git commit -m "Auto-update Schumann resonance spectrogram data [skip ci]" || echo "No new images to commit"

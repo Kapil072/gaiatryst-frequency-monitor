@@ -1,12 +1,15 @@
 """
 Spectrogram Scraper & Analyzer for HeartMath GCI
 Automatically downloads and analyzes Schumann resonance spectrogram images
+Saves results to data.json for Flutter app integration
 """
 
 import os
 import cv2
 import numpy as np
 import re
+import json
+from datetime import datetime, timezone
 from playwright.sync_api import sync_playwright
 
 
@@ -145,9 +148,69 @@ def auto_scrape_and_analyze():
                 for r in results:
                     f.write(f"{r['site']},{r['frequency']},{r['date']}\n")
             print(f"📊 Summary saved to: {csv_path}")
+            
+            # Update data.json for Flutter app integration
+            update_data_json(results)
 
         print("🏁 Pipeline Finished!")
         browser.close()
+
+
+def update_data_json(results):
+    """Update data.json with latest spectrogram analysis results"""
+    # Map site names to GCI station IDs
+    site_to_gci = {
+        'gci001': 'GCI001',
+        'gci002': 'GCI002',
+        'gci003': 'GCI003',
+        'gci004': 'GCI004',
+        'gci005': 'GCI005',
+        'gci006': 'GCI006'
+    }
+    
+    # Build stations dictionary
+    stations = {}
+    frequencies = []
+    
+    for result in results:
+        site = result['site'].lower()
+        frequency = result['frequency']
+        
+        # Try to map to GCI ID
+        gci_id = site_to_gci.get(site)
+        if not gci_id:
+            # Use site name as fallback
+            gci_id = site.upper().replace('_', '')[:7]
+        
+        stations[gci_id] = frequency
+        if isinstance(frequency, (int, float)) and frequency > 0:
+            frequencies.append(frequency)
+    
+    # Calculate global average
+    global_avg = round(sum(frequencies) / len(frequencies), 2) if frequencies else 0.0
+    
+    # Create data structure
+    data = {
+        "timestamp": datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'),
+        "global_avg": global_avg,
+        "stations": stations,
+        "active_stations": len(frequencies),
+        "source": "HeartMath Spectrogram Analysis",
+        "status": "live" if frequencies else "offline",
+        "is_live": True if frequencies else False
+    }
+    
+    # Determine save path (project root)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    json_path = os.path.join(project_root, "data.json")
+    
+    # Save to JSON
+    with open(json_path, 'w') as f:
+        json.dump(data, f, indent=2)
+    
+    print(f"✅ data.json updated: {global_avg} Hz from {len(frequencies)} stations")
+    print(f"   Saved to: {json_path}")
 
 
 if __name__ == "__main__":
