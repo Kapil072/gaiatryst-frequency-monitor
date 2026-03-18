@@ -38,19 +38,18 @@ jobs:
       - name: Run the Spectrogram Scraper & Analyzer
         run: python api/test_scraping.py 
 
-      - name: Commit and Push new images and data.json
+      - name: Commit and Push new data.json (delete images after extraction)
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
-          # Add all spectrogram folders (spectrograms_YYYY_MM_DD/)
-          # ✅ CORRECTED PATH: Matches actual script output location
-          git add spectrograms_*/
-          
           # Add data.json for Flutter app integration
           git add data.json
           
-          # Commit the changes. If there are no new images, it echoes a message instead of failing.
+          # Delete spectrogram image folders to save space
+          rm -rf spectrograms_*/
+          
+          # Commit the changes
           # [skip ci] prevents this commit from triggering another workflow loop
-          git commit -m "Auto-update Schumann resonance spectrogram data [skip ci]" || echo "No new images to commit"
+          git commit -m "Auto-update Schumann resonance data [skip ci]" || echo "No new data to commit"
           git push
