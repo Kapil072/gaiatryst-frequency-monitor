@@ -44,6 +44,7 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
           # Add all spectrogram folders (spectrograms_YYYY_MM_DD/)
+          # FIXED: Changed from spectrogram_downloads/ to match actual script output
           git add spectrograms_*/
           
           # Commit the changes. If there are no new images, it echoes a message instead of failing.
