@@ -13,30 +13,36 @@ permissions:
 jobs:
   scrape-data:
     runs-on: ubuntu-latest
+    
+    # This silences the Node 20 deprecation warning
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true 
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5  # Node.js 24 compatible
+        # Upgraded to v5 for Node 24 compatibility
+        uses: actions/checkout@v5 
 
       - name: Set up Python
-        uses: actions/setup-python@v6  # Node.js 24 compatible
+        # Upgraded to v6 for Node 24 compatibility
+        uses: actions/setup-python@v6 
         with:
           python-version: '3.12'
 
       - name: Install Python packages and Playwright browser
         run: |
           python -m pip install --upgrade pip
-          pip install playwright requests
+          pip install playwright numpy opencv-python-headless
           python -m playwright install chromium
 
-      - name: Run the Scraper
-        # Make sure this matches the exact name of your python file
-        run: python python/main.py
+      - name: Run the Spectrogram Scraper & Analyzer
+        run: python api/test_scraping.py 
 
-      - name: Commit and Push new images
+      - name: Commit and Push new images and CSV
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
           git add spectrogram_downloads/
-          git commit -m "Auto-update latest spectrogram images" || echo "No new images to commit"
+          git commit -m "Auto-update Schumann resonance spectrogram data [skip ci]" || echo "No new images to commit"
           git push
