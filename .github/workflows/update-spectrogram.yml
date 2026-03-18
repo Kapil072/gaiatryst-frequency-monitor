@@ -43,6 +43,10 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
-          git add spectrogram_downloads/
+          # Add all spectrogram folders (spectrograms_YYYY_MM_DD/)
+          git add spectrograms_*/
+          
+          # Commit the changes. If there are no new images, it echoes a message instead of failing.
+          # [skip ci] prevents this commit from triggering another workflow loop
           git commit -m "Auto-update Schumann resonance spectrogram data [skip ci]" || echo "No new images to commit"
           git push
