@@ -570,7 +570,7 @@ class _EarthViewPageState extends State<EarthViewPage>
                                         const SizedBox(height: 4),
                                         Text(
                                           isActive
-                                              ? '${frequency.toStringAsFixed(1)} Hz'
+                                              ? '${frequency.toStringAsFixed(2)} Hz'
                                               : 'Offline',
                                           style: TextStyle(
                                             color: isActive
