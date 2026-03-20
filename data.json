@@ -1,9 +1,9 @@
 {
-  "timestamp": "2026-03-20 01:00:49 UTC",
+  "timestamp": "2026-03-20 06:39:05 UTC",
   "global_avg": 7.92,
   "stations": {
-    "GCI004": 7.86,
     "GCI001": 7.95,
+    "GCI004": 7.86,
     "GCI003": 7.95
   },
   "active_stations": 3,
