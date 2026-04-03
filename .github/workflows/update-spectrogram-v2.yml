@@ -2,30 +2,25 @@ name: Update Spectrogram Data v2
 
 on:
   schedule:
-    # Runs every 6 hours at minute 0 (UTC) - Updated for Node.js 24 compatibility
     - cron: '0 */6 * * *'
   workflow_dispatch:
-    # Manual trigger available
 
 permissions:
-  contents: write  # This is REQUIRED so the bot is allowed to save the images back to your repo
+  contents: write
 
 jobs:
   scrape-data:
     runs-on: ubuntu-latest
-    
-    # This silences the Node 20 deprecation warning
+
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true 
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout repository
-        # Upgraded to v5 for Node 24 compatibility
-        uses: actions/checkout@v5 
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        # Upgraded to v6 for Node 24 compatibility
-        uses: actions/setup-python@v6 
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -36,20 +31,40 @@ jobs:
           python -m playwright install chromium
 
       - name: Run the Spectrogram Scraper & Analyzer
-        run: python api/test_scraping.py 
+        run: |
+          set -e  # Exit immediately if the script crashes
+          python api/test_scraping.py
+          echo "✅ Script finished successfully"
 
-      - name: Commit and Push new data.json (delete images after extraction)
+      - name: Verify data.json was created
+        run: |
+          if [ ! -f "data.json" ]; then
+            echo "❌ ERROR: data.json was NOT created by the script!"
+            echo "Files in repo root:"
+            ls -la
+            exit 1  # Fail the workflow so you get notified
+          else
+            echo "✅ data.json found!"
+            echo "File size: $(wc -c < data.json) bytes"
+            echo "Preview (first 500 chars):"
+            head -c 500 data.json
+          fi
+
+      - name: Commit and Push data.json
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          
-          # Add data.json for Flutter app integration
+
+          # Add data.json
           git add data.json
-          
+
           # Delete spectrogram image folders to save space
           rm -rf spectrograms_*/
-          
-          # Commit the changes
-          # [skip ci] prevents this commit from triggering another workflow loop
-          git commit -m "Auto-update Schumann resonance data [skip ci]" || echo "No new data to commit"
+
+          # Show what git sees
+          echo "=== Git status ==="
+          git status
+
+          # Commit — if nothing changed, echo and continue (don't fail)
+          git commit -m "Auto-update Schumann resonance data [skip ci]" || echo "⚠️ No new data to commit"
           git push
