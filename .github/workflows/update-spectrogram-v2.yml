@@ -32,39 +32,68 @@ jobs:
 
       - name: Run the Spectrogram Scraper & Analyzer
         run: |
-          set -e  # Exit immediately if the script crashes
+          set -e
+          # Run from REPO ROOT so data.json saves to root
+          cd $GITHUB_WORKSPACE
           python api/test_scraping.py
-          echo "✅ Script finished successfully"
+          echo "✅ Script finished"
 
-      - name: Verify data.json was created
+      - name: Debug - Show all files created
         run: |
-          if [ ! -f "data.json" ]; then
-            echo "❌ ERROR: data.json was NOT created by the script!"
-            echo "Files in repo root:"
-            ls -la
-            exit 1  # Fail the workflow so you get notified
-          else
-            echo "✅ data.json found!"
-            echo "File size: $(wc -c < data.json) bytes"
-            echo "Preview (first 500 chars):"
-            head -c 500 data.json
+          echo "=== Repo root files ==="
+          ls -la $GITHUB_WORKSPACE/
+          echo ""
+          echo "=== api/ folder files ==="
+          ls -la $GITHUB_WORKSPACE/api/ || echo "api/ not found"
+          echo ""
+          echo "=== data.json in root? ==="
+          cat $GITHUB_WORKSPACE/data.json || echo "❌ NOT FOUND in root"
+          echo ""
+          echo "=== data.json in api/? ==="
+          cat $GITHUB_WORKSPACE/api/data.json || echo "❌ NOT FOUND in api/"
+
+      - name: Move data.json to repo root if saved in wrong place
+        run: |
+          # If script saved it in api/ folder, move it to root
+          if [ -f "$GITHUB_WORKSPACE/api/data.json" ] && [ ! -f "$GITHUB_WORKSPACE/data.json" ]; then
+            echo "⚠️ data.json found in api/ — moving to repo root"
+            cp $GITHUB_WORKSPACE/api/data.json $GITHUB_WORKSPACE/data.json
           fi
+
+          # Final check - must exist in root now
+          if [ ! -f "$GITHUB_WORKSPACE/data.json" ]; then
+            echo "❌ FATAL: data.json not found anywhere!"
+            exit 1
+          fi
+
+          echo "✅ data.json confirmed at repo root"
+          echo "Content:"
+          cat $GITHUB_WORKSPACE/data.json
 
       - name: Commit and Push data.json
         run: |
+          cd $GITHUB_WORKSPACE
+
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Add data.json
+          # Stage data.json from root
           git add data.json
 
-          # Delete spectrogram image folders to save space
+          # Clean up spectrogram folders
           rm -rf spectrograms_*/
+          git add -u  # Stage deleted files
 
-          # Show what git sees
-          echo "=== Git status ==="
+          echo "=== Git status before commit ==="
           git status
 
-          # Commit — if nothing changed, echo and continue (don't fail)
-          git commit -m "Auto-update Schumann resonance data [skip ci]" || echo "⚠️ No new data to commit"
-          git push
+          git diff --cached --stat
+
+          # Commit only if there are actual changes
+          if git diff --cached --quiet; then
+            echo "⚠️ No changes to commit — data.json is identical to last run"
+          else
+            git commit -m "Auto-update Schumann resonance data [skip ci]"
+            git push
+            echo "✅ Pushed successfully"
+          fi
