@@ -20,40 +20,66 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
+
+      # ─────────────────────────────────────────
+      # 1. CHECKOUT
+      # ─────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      # ─────────────────────────────────────────
+      # 2. PYTHON SETUP
+      # ─────────────────────────────────────────
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
+      # ─────────────────────────────────────────
+      # 3. INSTALL DEPENDENCIES
+      # ─────────────────────────────────────────
       - name: Install Python packages and Playwright browser
         run: |
           python -m pip install --upgrade pip
           pip install playwright numpy opencv-python-headless requests
           python -m playwright install chromium
 
+      # ─────────────────────────────────────────
+      # 4. RUN SCRAPER
+      # ─────────────────────────────────────────
       - name: Run the Spectrogram Scraper & Analyzer
         run: |
           set -e
           cd $GITHUB_WORKSPACE
           python api/test_scraping.py
-          echo "✅ Script finished"
+          echo "✅ Scraper finished"
 
-      - name: Move data.json to root if saved in wrong place
+      # ─────────────────────────────────────────
+      # 5. FIND data.json (wherever script saved it)
+      # ─────────────────────────────────────────
+      - name: Locate and verify data.json
         run: |
+          echo "=== Searching for data.json ==="
+          find $GITHUB_WORKSPACE -name "data.json" | head -20
+
+          # If script saved it inside api/ folder, copy to root
           if [ -f "$GITHUB_WORKSPACE/api/data.json" ] && [ ! -f "$GITHUB_WORKSPACE/data.json" ]; then
-            echo "Moving data.json from api/ to root"
+            echo "⚠️ Found in api/ — copying to repo root"
             cp $GITHUB_WORKSPACE/api/data.json $GITHUB_WORKSPACE/data.json
           fi
+
+          # Hard fail if still not found anywhere
           if [ ! -f "$GITHUB_WORKSPACE/data.json" ]; then
-            echo "❌ FATAL: data.json not found!"
+            echo "❌ FATAL: data.json not found anywhere! Scraper did not produce output."
             exit 1
           fi
-          echo "✅ data.json content:"
+
+          echo "✅ data.json found at repo root. Contents:"
           cat $GITHUB_WORKSPACE/data.json
 
+      # ─────────────────────────────────────────
+      # 6. COMMIT AND PUSH data.json FIRST
+      # ─────────────────────────────────────────
       - name: Commit and Push data.json
         run: |
           cd $GITHUB_WORKSPACE
@@ -61,35 +87,44 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          # Stage only data.json
           git add data.json
-          rm -rf spectrograms_*/
-          git add -u
 
+          # Check if data.json actually changed
           if git diff --cached --quiet; then
-            echo "⚠️ No changes to commit — data unchanged"
+            echo "⚠️ data.json has not changed since last run — nothing to commit"
           else
             git commit -m "Auto-update Schumann resonance data [skip ci]"
+            # Pull any remote changes before pushing (fixes rejection error)
             git pull --rebase origin main
             git push
-            echo "✅ Pushed successfully"
+            echo "✅ data.json committed and pushed successfully"
           fi
-```
 
----
+      # ─────────────────────────────────────────
+      # 7. DELETE SPECTROGRAM IMAGES AFTER data.json IS SAFE
+      # ─────────────────────────────────────────
+      - name: Delete spectrogram images and push cleanup
+        run: |
+          cd $GITHUB_WORKSPACE
 
-### Steps to apply this now
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-1. Go to your repo → `.github/workflows/` → open your `.yml` file
-2. Click the ✏️ **Edit** (pencil) button
-3. **Select all** and replace with the full workflow above
-4. Click **Commit changes**
-5. Go to **Actions** tab → run manually → it will push cleanly
+          # Pull latest so we are in sync after previous push
+          git pull --rebase origin main
 
----
+          # Delete all spectrogram image folders
+          rm -rf spectrograms_*/
 
-### ⚠️ Important reminder
+          # Stage all deletions
+          git add -u
 
-Even after this fix, `data.json` will still show the old **March 23** timestamp because the scraper itself is failing:
-```
-⚠️ Timeout waiting for links to load.
-❌ Could not find any dated image links.
+          # Only commit if something was actually deleted
+          if git diff --cached --quiet; then
+            echo "⚠️ No spectrogram images to delete — skipping cleanup commit"
+          else
+            git commit -m "Cleanup: remove spectrogram images [skip ci]"
+            git push
+            echo "✅ Spectrogram images deleted and pushed"
+          fi
