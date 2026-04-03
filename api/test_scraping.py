@@ -1,219 +1,99 @@
-"""
-Spectrogram Scraper & Analyzer for HeartMath GCI
-Automatically downloads and analyzes Schumann resonance spectrogram images
-Saves results to data.json for Flutter app integration
-"""
+name: Update Spectrogram Data v2
 
-import os
-import cv2
-import numpy as np
-import re
-import json
-from datetime import datetime, timezone
-from playwright.sync_api import sync_playwright
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
 
+permissions:
+  contents: write
 
-# ==========================================
-# 1. THE ANALYZER FUNCTION
-# ==========================================
-def analyze_spectrogram(image_path):
-    """Analyze spectrogram to extract peak Schumann resonance frequency"""
-    img = cv2.imread(image_path)
+jobs:
+  scrape-data:
+    runs-on: ubuntu-latest
 
-    if img is None:
-        return "Error: Could not read image"
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    gray = cv2.GaussianBlur(gray, (5, 5), 0)
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
 
-    height = gray.shape[0]
-    FMAX = 50
-    row_intensity = np.mean(gray, axis=1)
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
 
-    low_freq = 7
-    high_freq = 9
+      - name: Install Python packages and Playwright browser
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright numpy opencv-python-headless
+          python -m playwright install chromium
 
-    y_low = int(height * (1 - high_freq / FMAX))
-    y_high = int(height * (1 - low_freq / FMAX))
+      - name: Run the Spectrogram Scraper & Analyzer
+        run: |
+          set -e
+          # Run from REPO ROOT so data.json saves to root
+          cd $GITHUB_WORKSPACE
+          python api/test_scraping.py
+          echo "✅ Script finished"
 
-    if y_low >= y_high or y_low < 0 or y_high > height:
-         return "Error: Region out of bounds"
+      - name: Debug - Show all files created
+        run: |
+          echo "=== Repo root files ==="
+          ls -la $GITHUB_WORKSPACE/
+          echo ""
+          echo "=== api/ folder files ==="
+          ls -la $GITHUB_WORKSPACE/api/ || echo "api/ not found"
+          echo ""
+          echo "=== data.json in root? ==="
+          cat $GITHUB_WORKSPACE/data.json || echo "❌ NOT FOUND in root"
+          echo ""
+          echo "=== data.json in api/? ==="
+          cat $GITHUB_WORKSPACE/api/data.json || echo "❌ NOT FOUND in api/"
 
-    region = row_intensity[y_low:y_high]
-    peak_index = np.argmax(region)
-    peak_row = peak_index + y_low
-    frequency = (1 - peak_row / height) * FMAX
-    
-    return round(frequency, 2)
+      - name: Move data.json to repo root if saved in wrong place
+        run: |
+          # If script saved it in api/ folder, move it to root
+          if [ -f "$GITHUB_WORKSPACE/api/data.json" ] && [ ! -f "$GITHUB_WORKSPACE/data.json" ]; then
+            echo "⚠️ data.json found in api/ — moving to repo root"
+            cp $GITHUB_WORKSPACE/api/data.json $GITHUB_WORKSPACE/data.json
+          fi
 
+          # Final check - must exist in root now
+          if [ ! -f "$GITHUB_WORKSPACE/data.json" ]; then
+            echo "❌ FATAL: data.json not found anywhere!"
+            exit 1
+          fi
 
-# ==========================================
-# 2. THE DYNAMIC SCRAPER & PIPELINE
-# ==========================================
-def auto_scrape_and_analyze():
-    url = "https://www.heartmath.org/gci/gcms/live-data/spectrogram-calendar/"
-    
-    with sync_playwright() as p:
-        print("🚀 Launching automated browser...")
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+          echo "✅ data.json confirmed at repo root"
+          echo "Content:"
+          cat $GITHUB_WORKSPACE/data.json
 
-        print("📡 Navigating to HeartMath Calendar...")
-        page.goto(url, wait_until="networkidle", timeout=60000)
-        
-        try:
-            # Wait for ANY .jpg link to appear
-            page.locator('a[href*=".jpg"]').first.wait_for(timeout=10000)
-        except:
-            print("⚠️ Timeout waiting for links to load. The site might be slow today.")
+      - name: Commit and Push data.json
+        run: |
+          cd $GITHUB_WORKSPACE
 
-        print("🔍 Scanning the page to determine the latest available date...")
-        
-        all_image_urls = []
-        dates_found = set()
-        
-        # Regex pattern to find exactly 4 digits, underscore, 2 digits, underscore, 2 digits
-        date_pattern = re.compile(r"(\d{4}_\d{2}_\d{2})")
-        
-        for frame in page.frames:
-            links = frame.locator('a').element_handles()
-            for link in links:
-                full_url = link.get_property("href").json_value()
-                
-                if full_url and full_url.endswith(".jpg") and "thumb" not in full_url.lower():
-                    all_image_urls.append(full_url)
-                    
-                    # Search the URL for our date pattern
-                    match = date_pattern.search(full_url)
-                    if match:
-                        dates_found.add(match.group(1))
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-        if not dates_found:
-            print("❌ Could not find any dated image links.")
-            browser.close()
-            return
+          # Stage data.json from root
+          git add data.json
 
-        # Let Python find the maximum (newest) date automatically
-        latest_date = max(dates_found)
-        print(f"📅 Latest data available on server is for: {latest_date}")
-        
-        # Create the folder dynamically based on the latest date
-        save_folder = f"spectrograms_{latest_date}"
-        if not os.path.exists(save_folder):
-            os.makedirs(save_folder)
+          # Clean up spectrogram folders
+          rm -rf spectrograms_*/
+          git add -u  # Stage deleted files
 
-        # Filter our giant list of URLs to only keep the ones that match our latest_date
-        # We use list(set(...)) to remove any accidental duplicate links
-        target_urls = list(set([u for u in all_image_urls if latest_date in u]))
-        
-        print(f"✅ Found {len(target_urls)} images for {latest_date}! Starting pipeline...\n")
-        print("-" * 40)
-        
-        # Results storage
-        results = []
-        
-        for img_url in target_urls:
-            filename = img_url.split("/")[-1]
-            site = img_url.split("/")[-2] 
-            save_path = os.path.join(save_folder, f"{site}_{filename}")
-            
-            try:
-                response = page.request.get(img_url)
-                
-                if response.ok:
-                    with open(save_path, "wb") as f:
-                        f.write(response.body())
-                    print(f"⬇️ Saved: {site}")
-                    
-                    # Pass it to the analyzer
-                    peak_freq = analyze_spectrogram(save_path)
-                    print(f"🧠 Analysis for {site} -> Peak Frequency: {peak_freq} Hz")
-                    results.append({
-                        'site': site,
-                        'frequency': peak_freq,
-                        'date': latest_date
-                    })
-                    print("-" * 40)
-                    
-                else:
-                    print(f"⚠️ Failed to download {filename} (Status: {response.status})")
-            except Exception as e:
-                print(f"⚠️ Error processing {filename}: {e}")
+          echo "=== Git status before commit ==="
+          git status
 
-        # Save summary CSV
-        if results:
-            csv_path = os.path.join(save_folder, "analysis_summary.csv")
-            with open(csv_path, 'w') as f:
-                f.write("site,frequency,date\n")
-                for r in results:
-                    f.write(f"{r['site']},{r['frequency']},{r['date']}\n")
-            print(f"📊 Summary saved to: {csv_path}")
-            
-            # Update data.json for Flutter app integration
-            update_data_json(results)
+          git diff --cached --stat
 
-        print("🏁 Pipeline Finished!")
-        browser.close()
-
-
-def update_data_json(results):
-    """Update data.json with latest spectrogram analysis results"""
-    # Map site names to GCI station IDs
-    site_to_gci = {
-        'gci001': 'GCI001',
-        'gci002': 'GCI002',
-        'gci003': 'GCI003',
-        'gci004': 'GCI004',
-        'gci005': 'GCI005',
-        'gci006': 'GCI006'
-    }
-    
-    # Build stations dictionary
-    stations = {}
-    frequencies = []
-    
-    for result in results:
-        site = result['site'].lower()
-        frequency = result['frequency']
-        
-        # Try to map to GCI ID
-        gci_id = site_to_gci.get(site)
-        if not gci_id:
-            # Use site name as fallback
-            gci_id = site.upper().replace('_', '')[:7]
-        
-        stations[gci_id] = frequency
-        if isinstance(frequency, (int, float)) and frequency > 0:
-            frequencies.append(frequency)
-    
-    # Calculate global average
-    global_avg = round(sum(frequencies) / len(frequencies), 2) if frequencies else 0.0
-    
-    # Create data structure
-    data = {
-        "timestamp": datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'),
-        "global_avg": global_avg,
-        "stations": stations,
-        "active_stations": len(frequencies),
-        "source": "HeartMath Spectrogram Analysis",
-        "status": "live" if frequencies else "offline",
-        "is_live": True if frequencies else False
-    }
-    
-    # Determine save path (project root)
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(script_dir)
-    json_path = os.path.join(project_root, "data.json")
-    
-    # Save to JSON
-    with open(json_path, 'w') as f:
-        json.dump(data, f, indent=2)
-    
-    print(f"✅ data.json updated: {global_avg} Hz from {len(frequencies)} stations")
-    print(f"   Saved to: {json_path}")
-
-
-if __name__ == "__main__":
-    # No date needed! Just run it.
-    auto_scrape_and_analyze() 
-
+          # Commit only if there are actual changes
+          if git diff --cached --quiet; then
+            echo "⚠️ No changes to commit — data.json is identical to last run"
+          else
+            git commit -m "Auto-update Schumann resonance data [skip ci]"
+            git push
+            echo "✅ Pushed successfully"
+          fi
