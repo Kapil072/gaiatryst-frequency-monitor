@@ -121,8 +121,8 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install playwright numpy opencv-python-headless
-          python -m playwright install chromium
+          pip install -r api/requirements.txt
+          python -m playwright install --with-deps chromium
       
       - name: Run scraper
         run: python api/test_scraping.py
@@ -130,8 +130,9 @@ jobs:
       - name: Commit results
         run: |
           git config --global user.name "github-actions[bot]"
-          git add spectrograms_*/
+          git add data.json
           git commit -m "Auto-update Schumann resonance data [skip ci]" || echo "No changes"
+          git pull --rebase origin main
           git push
 ```
 
@@ -141,7 +142,7 @@ jobs:
 
 1. Go to your GitHub repository
 2. Click **Actions** tab
-3. Select **"Update Spectrogram Data"** workflow
+3. Select **"Update Spectrogram Data v2"** workflow (if it says disabled, click **Enable workflow** first)
 4. Click **"Run workflow"** button
 5. Wait for completion (~2-5 minutes)
 
@@ -187,7 +188,7 @@ gci003,7.82,2024_03_18
 ### Error Handling
 - Timeout handling for slow-loading pages
 - Graceful degradation if no images found
-- Silent failure when no new images available
+- Exits with code 1 (failing the workflow run) when no spectrograms are found
 - `[skip ci]` flag prevents recursive workflow triggers
 
 ## Troubleshooting
@@ -195,14 +196,14 @@ gci003,7.82,2024_03_18
 ### "Exit Code 2" Error
 Usually means file not found. Check:
 - Script path in workflow: `python api/test_scraping.py`
-- Folder path for commits: `spectrograms_*/`
 
 ### Node.js Deprecation Warning
 Already silenced with `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` environment variable.
 
 ### No Images Downloaded
 - Site might be slow - timeout is set to 10 seconds
-- Check HeartMath website availability
+- Check HeartMath website availability: https://nocc.heartmath.org/spectrogram/index.php
+- HeartMath moved this page once already (the old `heartmath.org/gci/gcms/live-data/spectrogram-calendar/` now redirects). If it moves again, update `url` in `api/test_scraping.py`
 - Verify date pattern matching in URLs
 
 ### Analysis Returns Error
@@ -212,9 +213,9 @@ Already silenced with `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` environment var
 
 ## Data Access
 
-All downloaded data is committed to the repository and available at:
+Only `data.json` is committed; downloaded images are discarded after analysis. The live file is at:
 ```
-https://github.com/Kapil072/gaiatryst-frequency-monitor/tree/main/spectrograms_YYYY_MM_DD/
+https://raw.githubusercontent.com/Kapil072/gaiatryst-frequency-monitor/main/data.json
 ```
 
 ## License

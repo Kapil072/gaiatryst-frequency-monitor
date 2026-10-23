@@ -1,5 +1,0 @@
-flutter build apk          # For Android
-flutter build ios          # For iOS
-flutter build windows      # For Windows
-
-flutter run
