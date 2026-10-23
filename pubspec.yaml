@@ -9,10 +9,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_cube: ^0.1.1
-  path_provider: ^2.1.1
   url_launcher: ^6.2.2
   http: ^1.1.0
+  vector_math: ^2.1.4
 
 dev_dependencies:
   flutter_test:
@@ -20,19 +19,17 @@ dev_dependencies:
   flutter_lints: ^3.0.0
   flutter_launcher_icons: ^0.13.1
 
+
 flutter:
   uses-material-design: true
 
   assets:
-    - assets/13902_Earth_v1_l3.obj
-    - assets/13902_Earth_v1_l3.mtl
     - assets/IMG_8725.JPG.jpeg
-    - assets/dot.jpeg
+    - assets/IMG_9429.jpeg
     - assets/WhatsApp_Image_2025-12-28_at_5.00.39_PM-removebg-preview (1).png
     - assets/why this app.png
     - assets/More about Schumann Vibes .jpg
     - assets/Picture1.png
-
 flutter_launcher_icons:
   android: true
   ios: true
