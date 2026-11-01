@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-11-01 05:43:52 UTC",
-  "global_avg": 7.72,
+  "timestamp": "2026-11-01 13:07:10 UTC",
+  "global_avg": 7.75,
   "stations": {
-    "GCI001": 7.77,
-    "GCI004": 7.41,
+    "GCI005": 8.04,
+    "GCI004": 7.14,
     "GCI003": 7.86,
-    "GCI005": 7.86
+    "GCI001": 7.95
   },
   "active_stations": 4,
   "source": "HeartMath Spectrogram Analysis",
